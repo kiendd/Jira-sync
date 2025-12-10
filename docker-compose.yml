@@ -1,0 +1,32 @@
+version: "3.9"
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      JIRA_AUTH_TYPE: ${JIRA_AUTH_TYPE:-pat}
+      JIRA_BASE_URL: ${JIRA_BASE_URL}
+      JIRA_EMAIL: ${JIRA_EMAIL:-}
+      JIRA_API_TOKEN: ${JIRA_API_TOKEN}
+      USER_PROJECT_KEY: ${USER_PROJECT_KEY}
+      DEV_PROJECT_KEY: ${DEV_PROJECT_KEY}
+      SYNC_INTERVAL_MINUTES: ${SYNC_INTERVAL_MINUTES:-5}
+      DATABASE_URL: mongodb://mongo:27017
+      DATABASE_NAME: ${DATABASE_NAME:-jira_sync}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      - mongo
+    env_file:
+      - .env
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+volumes:
+  mongo-data:

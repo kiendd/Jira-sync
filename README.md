@@ -18,6 +18,11 @@ Service nền Node.js/TypeScript đồng bộ 2 Jira project:
 ### Chạy service
 - Dev (ts-node ESM): `npm start`
 - Production build: `npm run build` rồi `node dist/index.js`
+- Chạy quét trạng thái ban đầu (không tạo issue Dev, chỉ lưu trạng thái project vận hành): `npm run sync:init`
+- Docker:
+  - Build image: `docker build -t jira-sync .`
+  - Chạy bằng docker compose (kèm MongoDB): `docker-compose up -d`
+  - Cấu hình môi trường: đặt `.env` với `JIRA_*`, `USER_PROJECT_KEY`, `DEV_PROJECT_KEY`; compose sẽ override `DATABASE_URL` trỏ đến service `mongo`
 
 ### Kiểm thử thủ công
 - Trạng thái Project vận hành → Project phát triển:
