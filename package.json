@@ -9,8 +9,18 @@
     "lint": "tsc --noEmit",
     "sync:init": "node --loader ts-node/esm scripts/initial-sync.ts",
     "test:list-user-project": "node --loader ts-node/esm scripts/list-user-project-issues.ts",
-    "test:auth": "node --loader ts-node/esm scripts/test-auth.ts",
-    "test:sync-cycle": "node --loader ts-node/esm scripts/test-sync-cycle.ts"
+    "test:auth": "ts-node-esm scripts/test-auth.ts",
+    "test:sync-cycle": "npm run build && node scripts/test-sync-cycle-dist.js"
+  },
+  "ts-node": {
+    "esm": true,
+    "experimentalSpecifierResolution": "node",
+    "preferTsExts": true,
+    "transpileOnly": true,
+    "compilerOptions": {
+      "module": "NodeNext",
+      "moduleResolution": "NodeNext"
+    }
   },
   "dependencies": {
     "dotenv": "^16.3.1",

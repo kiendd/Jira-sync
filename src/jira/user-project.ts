@@ -47,7 +47,14 @@ export const resolveUserIssue = async (
   if (!skipStatusChange) {
     await jiraClient.transitionIssue(issueKey, targetStatus);
   }
-  await jiraClient.updateIssue(issueKey, { replied: true });
+  // Some Jira instances block setting custom fields via REST without screen configuration; ignore errors here
+  try {
+    await jiraClient.updateIssue(issueKey, { replied: true });
+  } catch (err) {
+    // log at debug level to avoid failing the whole sync when field is not accessible
+    // eslint-disable-next-line no-console
+    console.warn(`Skipping replied update for ${issueKey}:`, (err as Error).message);
+  }
 };
 
 export const transitionUserIssueStatus = async (

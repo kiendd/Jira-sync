@@ -10,7 +10,7 @@ import {
   buildUserProjectIssueUrl,
   transitionUserIssueStatus,
 } from '../jira/user-project.js';
-import { getMappingByDevKey } from '../db/repo.js';
+import { getMappingByDevKey, getDevProjectIssueState, upsertDevProjectIssueState } from '../db/repo.js';
 import { descriptionHasLink } from '../jira/description.js';
 
 export const syncDevProjectToUserProject = async (
@@ -27,7 +27,17 @@ export const syncDevProjectToUserProject = async (
     }
 
     const mapping = await getMappingByDevKey(issue.key);
+    const devState = await getDevProjectIssueState(issue.key);
+    const previousStatus = devState?.status ?? '';
+    const statusChanged = previousStatus !== normalizedStatus;
+
     if (!mapping) {
+      await upsertDevProjectIssueState({ issueKey: issue.key, status: normalizedStatus });
+      continue;
+    }
+
+    if (!statusChanged) {
+      await upsertDevProjectIssueState({ issueKey: issue.key, status: normalizedStatus });
       continue;
     }
 
@@ -78,7 +88,13 @@ export const syncDevProjectToUserProject = async (
       if (userStatus !== 'Reopened') {
         await transitionUserIssueStatus(userIssueKey, 'Reopened');
       }
+      await commentUserIssue(
+        userIssueKey,
+        `Issue DEV ${issue.key} đã được Reopened, cần xử lý lại`
+      );
     }
+
+    await upsertDevProjectIssueState({ issueKey: issue.key, status: normalizedStatus });
 
     logger.info(
       { devIssue: issue.key, userIssue: userIssueKey, status: normalizedStatus },

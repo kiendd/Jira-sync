@@ -19,6 +19,12 @@ export type UserProjectIssueStateDoc = {
   updated_at: Date;
 };
 
+export type DevProjectIssueStateDoc = {
+  issue_key: string;
+  status: string;
+  updated_at: Date;
+};
+
 const JiraMappingSchema = new Schema<JiraMappingDoc>(
   {
     user_issue_key: { type: String, required: true, unique: true },
@@ -47,6 +53,15 @@ const UserProjectIssueStateSchema = new Schema<UserProjectIssueStateDoc>(
   { collection: 'user_project_issue_state' }
 );
 
+const DevProjectIssueStateSchema = new Schema<DevProjectIssueStateDoc>(
+  {
+    issue_key: { type: String, required: true, unique: true },
+    status: { type: String, required: true },
+    updated_at: { type: Date, default: () => new Date() },
+  },
+  { collection: 'dev_project_issue_state' }
+);
+
 export const JiraMappingModel =
   mongoose.models.jira_mapping || model<JiraMappingDoc>('jira_mapping', JiraMappingSchema);
 export const SyncStateModel =
@@ -54,3 +69,6 @@ export const SyncStateModel =
 export const UserProjectIssueStateModel =
   mongoose.models.user_project_issue_state ||
   model<UserProjectIssueStateDoc>('user_project_issue_state', UserProjectIssueStateSchema);
+export const DevProjectIssueStateModel =
+  mongoose.models.dev_project_issue_state ||
+  model<DevProjectIssueStateDoc>('dev_project_issue_state', DevProjectIssueStateSchema);

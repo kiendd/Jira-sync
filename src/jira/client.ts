@@ -1,11 +1,14 @@
 import { Version2Client } from 'jira.js';
-import type {
-  CreatedIssue,
-  Issue as JiraIssueModel,
-  SearchResults,
-  Transitions,
-  User,
-} from 'jira.js/dist/esm/types/version2/models';
+type SearchResults = {
+  issues?: Array<{ id: string; key: string; fields: Record<string, any> }>;
+  total?: number;
+};
+
+type TransitionItem = { id?: string; name?: string };
+type Transitions = { transitions?: TransitionItem[] };
+type JiraIssueModel = { id: string; key: string; fields: Record<string, any> };
+type CreatedIssue = { key?: string; id?: string };
+type JiraUser = { accountId?: string; key?: string; emailAddress?: string; displayName?: string };
 import { config, logger, buildIssueUrl } from '../config/index.js';
 
 export type JiraIssue = {
@@ -14,8 +17,11 @@ export type JiraIssue = {
   fields: Record<string, any>;
 };
 
-const formatJiraDate = (date: Date): string =>
-  date.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '');
+const pad = (n: number): string => (n < 10 ? `0${n}` : `${n}`);
+const formatJiraDate = (date: Date): string => {
+  const d = new Date(date);
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+};
 
 class JiraClient {
   private client: Version2Client;
@@ -36,9 +42,19 @@ class JiraClient {
     updatedSince?: Date | null;
   }): Promise<JiraIssue[]> {
     const { jql, fields = [], updatedSince } = params;
-    const composedJql = updatedSince
-      ? `${jql} AND updated >= "${formatJiraDate(updatedSince)}"`
-      : jql;
+
+    let composedJql = jql;
+    if (updatedSince) {
+      const needle = /order by/i;
+      const match = jql.match(needle);
+      const updatedClause = `updated >= "${formatJiraDate(updatedSince)}"`;
+      if (match) {
+        const idx = match.index ?? jql.length;
+        composedJql = `${jql.slice(0, idx).trim()} AND ${updatedClause} ${jql.slice(idx)}`;
+      } else {
+        composedJql = `${jql} AND ${updatedClause}`;
+      }
+    }
     const maxResults = 50;
     const issues: JiraIssue[] = [];
     let startAt = 0;
@@ -58,7 +74,7 @@ class JiraClient {
 
       const total = typeof res.total === 'number' ? res.total : pageIssues.length;
       issues.push(
-        ...pageIssues.map((issue) => ({
+        ...pageIssues.map((issue: JiraIssueModel) => ({
           id: issue.id,
           key: issue.key,
           fields: issue.fields as Record<string, any>,
@@ -123,7 +139,7 @@ class JiraClient {
       issueIdOrKey: issueKey,
     });
     const target = transitionsRes.transitions?.find(
-      (t) => t.name?.toLowerCase() === transitionName.toLowerCase()
+      (t: TransitionItem) => t.name?.toLowerCase() === transitionName.toLowerCase()
     );
     if (!target?.id) {
       logger.warn({ issueKey, transitionName }, 'Transition not found, skipping');
@@ -142,7 +158,7 @@ class JiraClient {
     emailAddress?: string;
     displayName?: string;
   }> {
-    const user = await this.client.myself.getCurrentUser<User>();
+    const user = await this.client.myself.getCurrentUser<JiraUser>();
     return {
       accountId: (user as any).accountId ?? (user as any).key,
       emailAddress: (user as any).emailAddress,

@@ -1,5 +1,5 @@
 import dotenv from 'dotenv';
-import pino from 'pino';
+import pinoImport from 'pino';
 
 dotenv.config();
 
@@ -33,6 +33,8 @@ export const config = {
   databaseUrl: requireEnv('DATABASE_URL'),
   databaseName: requireEnv('DATABASE_NAME'),
 };
+
+const pino = (pinoImport as any).default ?? pinoImport;
 
 export const logger = pino({
   level: process.env.LOG_LEVEL || 'info',

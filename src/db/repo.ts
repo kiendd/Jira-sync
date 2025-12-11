@@ -5,6 +5,8 @@ import {
   SyncStateModel,
   UserProjectIssueStateDoc,
   UserProjectIssueStateModel,
+  DevProjectIssueStateDoc,
+  DevProjectIssueStateModel,
 } from './models.js';
 
 const SYNC_STATE_NAME = 'jira-sync';
@@ -73,6 +75,26 @@ export const upsertUserProjectIssueState = async (params: {
   ).lean<UserProjectIssueStateDoc>().then((doc) => {
     if (!doc) {
       throw new Error('Failed to upsert user project issue state');
+    }
+    return doc;
+  });
+
+export const getDevProjectIssueState = async (
+  issueKey: string
+): Promise<DevProjectIssueStateDoc | null> =>
+  DevProjectIssueStateModel.findOne({ issue_key: issueKey }).lean<DevProjectIssueStateDoc | null>();
+
+export const upsertDevProjectIssueState = async (params: {
+  issueKey: string;
+  status: string;
+}): Promise<DevProjectIssueStateDoc> =>
+  DevProjectIssueStateModel.findOneAndUpdate(
+    { issue_key: params.issueKey },
+    { $set: { status: params.status, updated_at: new Date() } },
+    { upsert: true, new: true }
+  ).lean<DevProjectIssueStateDoc>().then((doc) => {
+    if (!doc) {
+      throw new Error('Failed to upsert dev project issue state');
     }
     return doc;
   });
