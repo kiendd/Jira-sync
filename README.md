@@ -4,6 +4,10 @@ Service nền Node.js/TypeScript đồng bộ 2 Jira project:
 - Project vận hành (user-facing): log ý kiến, bug, comment của user, là căn cứ trả lời user.
 - Project phát triển: nhận issue từ project vận hành, xử lý và trả kết quả ngược về project vận hành.
 
+### Tài liệu quy trình
+- Sơ đồ luồng và vai trò vận hành: [Workflow](Workflow.md).
+- Khuyến nghị đọc trước khi cấu hình/chạy để hiểu rõ điểm chạm giữa User Project và Dev Project.
+
 ### Yêu cầu
 - Node.js 18+
 - MongoDB đang chạy và có quyền tạo DB
