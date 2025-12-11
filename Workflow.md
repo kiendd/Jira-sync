@@ -5,7 +5,7 @@
 flowchart LR
     Start["User báo lỗi / góp ý tính năng<br/>(Ticket mới)"] --> U_TODO
 
-    subgraph User_Project["USER PROJECT"]
+    subgraph User_Project[" "]
         direction TB
         subgraph User_Statuses[" "]
             direction LR
@@ -29,7 +29,7 @@ flowchart LR
         PO_REVIEW -->|Không làm| U_CANCEL
     end
 
-    subgraph Dev_Project["DEV PROJECT"]
+    subgraph Dev_Project[" "]
         direction TB
         subgraph Dev_Statuses[" "]
             direction LR
@@ -73,6 +73,12 @@ flowchart LR
     D_CANCEL -- "Auto sync:<br/>Set User = Cancelled" --> U_CANCEL
     D_REOPEN -- "Auto sync:<br/>Set User = Reopened" --> U_REOPEN
 
+    %% Nhãn ngoài khung để không bị che
+    User_Label["USER PROJECT"]
+    Dev_Label["DEV PROJECT"]
+    User_Project -.-> User_Label
+    Dev_Project -.-> Dev_Label
+
     %% Màu nền để phân biệt hai project (palette mới)
     classDef userNode fill:#e0f2fe,stroke:#0284c7,stroke-width:1;
     classDef devNode fill:#ecfdf3,stroke:#16a34a,stroke-width:1;
@@ -81,6 +87,7 @@ flowchart LR
     classDef userStatusGroup fill:#eff6ff,stroke:#3b82f6,stroke-width:1,stroke-dasharray:3 2;
     classDef devStatusGroup fill:#f0fdf4,stroke:#22c55e,stroke-width:1,stroke-dasharray:3 2;
     classDef devManualGroup fill:#fff7ed,stroke:#c2410c,stroke-width:1,stroke-dasharray:3 2;
+    classDef labelNode fill:transparent,stroke:transparent,font-size:24px,font-weight:bold;
     class U_TODO,U_WILLDO,U_INPROG,U_RESOLVED,U_DONE,U_REOPEN,U_CANCEL userNode;
     class D_TODO,D_INPROG,D_RESOLVED,D_DONE,D_REOPEN,D_CANCEL devNode;
     class User_Project userGroup;
@@ -88,6 +95,7 @@ flowchart LR
     class User_Statuses userStatusGroup;
     class Dev_Statuses devStatusGroup;
     class Dev_Manual devManualGroup;
+    class User_Label,Dev_Label labelNode;
 
     %% Style: mũi tên đậm và màu xanh, riêng mũi tên đứt màu đen
     linkStyle default stroke:#1f6feb,stroke-width:2;
