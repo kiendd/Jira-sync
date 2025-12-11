@@ -113,14 +113,14 @@ flowchart LR
 
 ## Auto sync
 - User ➜ Dev:
-  - Khi User ở `Will Do`, hệ thống tự tạo issue Dev ở trạng thái `To Do`.
+  - Khi User sang `Will Do`, hệ thống tự tạo issue Dev ở `To Do`.
 - Dev ➜ User:
-  - Dev `In Progress` → User `In Progress`.
-  - Dev `Resolved` → User `Resolved`.
-  - Dev `Done` → User `Done`.
-  - Dev `Cancelled` → User `Cancelled`.
-  - Dev `Reopened` → User `Reopened`.
-- Reopened: khi một bên Reopened, vòng sync kế tiếp sẽ đẩy trạng thái tương ứng sang bên còn lại.
+  - Dev sang `In Progress` → set User `In Progress`.
+  - Dev sang `Resolved` → set User `Resolved`.
+  - Dev sang `Done` → set User `Done` (có thể kèm thông báo cho user).
+  - Dev sang `Cancelled` → set User `Cancelled`.
+  - Dev sang `Reopened` → set User `Reopened`.
+- Reopened: khi một bên `Reopened`, vòng sync tiếp theo sẽ phản chiếu sang bên còn lại, sau đó Dev làm lại và đẩy về `Resolved`.
 
 ## Diễn giải sơ đồ
 - Nhóm User Project (xanh dương): nhận ticket, PO quyết định làm/không làm. Trạng thái nối đứt: To Do → Will Do → In Progress → Resolved → Done → Reopened; nhánh Cancelled từ To Do.

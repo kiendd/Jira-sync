@@ -22,7 +22,7 @@ export const syncUserProjectToDevProject = async (
       config.jira.devProjectKey
     );
 
-    if (statusName !== 'In Progress') {
+    if (statusName !== 'Will Do') {
       continue;
     }
     if (hasDevLink) {

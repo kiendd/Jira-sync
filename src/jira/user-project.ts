@@ -41,13 +41,19 @@ export const commentUserIssue = async (
 
 export const resolveUserIssue = async (
   issueKey: string,
-  skipStatusChange?: boolean
+  skipStatusChange?: boolean,
+  targetStatus = 'Resolved'
 ): Promise<void> => {
   if (!skipStatusChange) {
-    await jiraClient.transitionIssue(issueKey, 'Resolved');
+    await jiraClient.transitionIssue(issueKey, targetStatus);
   }
   await jiraClient.updateIssue(issueKey, { replied: true });
 };
+
+export const transitionUserIssueStatus = async (
+  issueKey: string,
+  targetStatus: string
+): Promise<void> => jiraClient.transitionIssue(issueKey, targetStatus);
 
 export const getUserProjectIssue = async (
   issueKey: string
