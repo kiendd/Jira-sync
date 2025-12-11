@@ -2,18 +2,18 @@
 
 ## Workflow trạng thái
 ```mermaid
-flowchart LR
+flowchart TD
     Start["User báo lỗi / góp ý tính năng<br/>(Ticket mới)"] --> U_TODO
 
-    subgraph User_Project[" "]
+    subgraph User_Project[" DEV PROJECT"]
         direction TB
         subgraph User_Statuses[" "]
-            direction LR
+            direction TB
             U_TODO["To Do"]
             U_WILLDO["Will Do"]
             U_INPROG["In Progress"]
             U_RESOLVED["Resolved"]
-            U_DONE["Done"]
+            U_DONE["Closed"]
             U_REOPEN["Reopened"]
             U_CANCEL["Cancelled"]
         end
@@ -29,20 +29,20 @@ flowchart LR
         PO_REVIEW -->|Không làm| U_CANCEL
     end
 
-    subgraph Dev_Project[" "]
+    subgraph Dev_Project[" USER PROJECT "]
         direction TB
         subgraph Dev_Statuses[" "]
-            direction LR
+            direction TB
             D_TODO["To Do"]
             D_INPROG["In Progress"]
-            D_RESOLVED["Resolved"]
             D_DONE["Done"]
+            D_CLOSED["Closed"]
             D_REOPEN["Reopened"]
             D_CANCEL["Cancelled"]
         end
         %% Thứ tự chính (mũi tên đứt)
-        D_TODO -.-> D_INPROG -.-> D_RESOLVED -.-> D_DONE
-        D_DONE -.-> D_REOPEN -.-> D_RESOLVED
+        D_TODO -.-> D_INPROG -.-> D_DONE -.-> D_CLOSED
+        D_CLOSED -.-> D_REOPEN -.-> D_DONE
         D_TODO -.-> D_CANCEL
 
         %% Nhóm các bước manual trong Dev
@@ -58,20 +58,20 @@ flowchart LR
         PM_PICK -->|Chưa pick| D_TODO
         PM_PICK -->|Cancel| D_CANCEL
 
-        D_INPROG --> DEV_WORK --> D_RESOLVED
-        D_RESOLVED --> TEST_VERIFY
-        TEST_VERIFY -->|Pass| D_DONE
+        D_INPROG --> DEV_WORK --> D_DONE
+        D_DONE --> TEST_VERIFY
+        TEST_VERIFY -->|Pass| D_CLOSED
         TEST_VERIFY -->|Fail| D_REOPEN
         D_REOPEN --> DEV_WORK
     end
 
     %% Auto Sync (service) nối thẳng giữa hai project
-    U_WILLDO -- "Auto sync:<br/>Tạo issue Dev: To Do" --> D_TODO
-    D_INPROG -- "Auto sync:<br/>Set User = In Progress" --> U_INPROG
-    D_RESOLVED -- "Auto sync:<br/>Set User = Resolved" --> U_RESOLVED
-    D_DONE -- "Auto sync:<br/>Set User = Done" --> U_DONE
-    D_CANCEL -- "Auto sync:<br/>Set User = Cancelled" --> U_CANCEL
-    D_REOPEN -- "Auto sync:<br/>Set User = Reopened" --> U_REOPEN
+    U_WILLDO -- "Auto sync:<br/>Tạo issue Dev: To Do" --> D_TODO:::autoSync
+    D_INPROG -- "Auto sync:<br/>Set User = In Progress" --> U_INPROG:::autoSync
+    D_CLOSED -- "Auto sync:<br/>Set User = Resolved" --> U_RESOLVED:::autoSync
+    D_CANCEL -- "Auto sync:<br/>Set User = Cancelled" --> U_CANCEL:::autoSync
+    D_REOPEN -- "Auto sync:<br/>Set User = Reopened" --> U_REOPEN:::autoSync
+    U_REOPEN -- "Auto sync:<br/>Set User = Reopened" --> D_REOPEN:::autoSync
 
     %% Nhãn ngoài khung để không bị che
     User_Label["USER PROJECT"]
@@ -88,8 +88,9 @@ flowchart LR
     classDef devStatusGroup fill:#f0fdf4,stroke:#22c55e,stroke-width:1,stroke-dasharray:3 2;
     classDef devManualGroup fill:#fff7ed,stroke:#c2410c,stroke-width:1,stroke-dasharray:3 2;
     classDef labelNode fill:transparent,stroke:transparent,font-size:24px,font-weight:bold;
+    classDef autoSync stroke:#dc2626,stroke-width:2;
     class U_TODO,U_WILLDO,U_INPROG,U_RESOLVED,U_DONE,U_REOPEN,U_CANCEL userNode;
-    class D_TODO,D_INPROG,D_RESOLVED,D_DONE,D_REOPEN,D_CANCEL devNode;
+    class D_TODO,D_INPROG,D_DONE,D_CLOSED,D_REOPEN,D_CANCEL devNode;
     class User_Project userGroup;
     class Dev_Project devGroup;
     class User_Statuses userStatusGroup;
@@ -101,6 +102,7 @@ flowchart LR
     linkStyle default stroke:#1f6feb,stroke-width:2;
     linkStyle 1,2,3,4,5,6,7 stroke:#000,stroke-width:2,stroke-dasharray:5 3;
     linkStyle 10,11,12,13,14,15 stroke:#000,stroke-width:2,stroke-dasharray:5 3;
+    linkStyle 28,29,30,31,32,33 stroke:#dc2626,stroke-width:2;
 ```
 
 ## Bước khởi đầu & lộ trình tổng quát
@@ -117,16 +119,15 @@ flowchart LR
 - Dev ➜ User:
   - Dev sang `In Progress` → set User `In Progress`.
   - Dev sang `Resolved` → set User `Resolved`.
-  - Dev sang `Done` → set User `Done` (có thể kèm thông báo cho user).
   - Dev sang `Cancelled` → set User `Cancelled`.
   - Dev sang `Reopened` → set User `Reopened`.
 - Reopened: khi một bên `Reopened`, vòng sync tiếp theo sẽ phản chiếu sang bên còn lại, sau đó Dev làm lại và đẩy về `Resolved`.
 
 ## Diễn giải sơ đồ
-- Nhóm User Project (xanh dương): nhận ticket, PO quyết định làm/không làm. Trạng thái nối đứt: To Do → Will Do → In Progress → Resolved → Done → Reopened; nhánh Cancelled từ To Do.
-- Nhóm Dev Project (xanh lá): issue được tạo tự động khi User `Will Do` và bắt đầu ở To Do. PM pick sprint → In Progress; Dev làm → Resolved; Tester verify (Pass → Done, Fail → Reopened); có nhánh Cancelled từ To Do.
+- Nhóm User Project (xanh dương): nhận ticket, PO quyết định làm/không làm. Trạng thái nối đứt: To Do → Will Do → In Progress → Resolved → Closed → Reopened; nhánh Cancelled từ To Do.
+- Nhóm Dev Project (xanh lá): issue được tạo tự động khi User `Will Do` và bắt đầu ở To Do. PM pick sprint → In Progress; Dev làm → Done → Closed; Tester verify (Fail → Reopened); có nhánh Cancelled từ To Do.
   - Khi Reopened, Dev xử lý lại thủ công và chuyển về `Resolved`.
-- Auto sync (mũi tên xanh đặc): chuyển trạng thái giữa hai project đúng các mốc In Progress, Resolved, Done, Cancelled, Reopened; tạo issue Dev khi User Will Do.
+- Auto sync (mũi tên xanh đặc): chuyển trạng thái giữa hai project đúng các mốc In Progress, Resolved, Closed (map sang User Resolved), Cancelled, Reopened; tạo issue Dev khi User Will Do.
 - Màu sắc: box User nền xanh dương nhạt, box Dev nền xanh lá nhạt; nhóm và nhóm trạng thái có nền/viền riêng để tách bạch; các decision node (hình thoi) là bước thủ công.
 
 ## Vai trò & trách nhiệm
@@ -142,7 +143,6 @@ flowchart LR
 - **Tester/QA**
   - Verify ở `Resolved`.
   - Pass → `Done`, Fail → `Reopened`.
-  - Khi `Done`, User sẽ được mirror `Done`.
 - **Hệ thống tự động**
   - Tạo issue Dev khi User `Will Do`.
-  - Đồng bộ trạng thái Dev → User cho các mốc `In Progress`, `Resolved`, `Done`, `Cancelled`, `Reopened` để hai project luôn khớp nhau.
+  - Đồng bộ trạng thái Dev → User cho các mốc `In Progress`, `Resolved`, `Cancelled`, `Reopened` để hai project luôn khớp nhau.

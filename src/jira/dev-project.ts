@@ -12,6 +12,7 @@ export const getUpdatedDevProjectIssues = async (
     'description',
     'status',
     'severity',
+    'updated',
   ];
   return jiraClient.searchIssues({
     jql: `project = ${projectKey} ORDER BY updated ASC`,
@@ -60,3 +61,22 @@ export const updateDevProjectDescriptionWithUserLink = async (
 
 export const buildDevProjectIssueUrl = (issueKey: string): string =>
   buildIssueUrl(issueKey);
+
+export const transitionDevIssueStatus = async (
+  issueKey: string,
+  targetStatus: string
+): Promise<void> => jiraClient.transitionIssue(issueKey, targetStatus);
+
+export const addAttachmentToDevIssue = async (params: {
+  issueKey: string;
+  filename: string;
+  data: ArrayBuffer | Uint8Array | Buffer;
+  mimeType?: string;
+}): Promise<void> => {
+  await jiraClient.addAttachment({
+    issueKey: params.issueKey,
+    filename: params.filename,
+    data: params.data,
+    mimeType: params.mimeType,
+  });
+};

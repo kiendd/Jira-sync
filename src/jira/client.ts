@@ -86,8 +86,16 @@ class JiraClient {
       startAt += pageIssues.length;
     }
 
-    logger.info({ jql: composedJql, count: issues.length }, 'Fetched Jira issues');
-    return issues;
+    const filtered = updatedSince
+      ? issues.filter((iss) => {
+          const updated = iss.fields?.updated;
+          const updatedAt = updated ? new Date(updated).getTime() : Number.MAX_SAFE_INTEGER;
+          return Number.isFinite(updatedAt) ? updatedAt > updatedSince.getTime() : true;
+        })
+      : issues;
+
+    logger.info({ jql: composedJql, count: filtered.length }, 'Fetched Jira issues');
+    return filtered;
   }
 
   async createIssue(fields: Record<string, any>): Promise<{
@@ -164,6 +172,21 @@ class JiraClient {
       emailAddress: (user as any).emailAddress,
       displayName: (user as any).displayName,
     };
+  }
+
+  async addAttachment(params: {
+    issueKey: string;
+    filename: string;
+    data: Buffer | ArrayBuffer | Uint8Array;
+    mimeType?: string;
+  }): Promise<void> {
+    const fileData = params.data instanceof Buffer
+      ? params.data
+      : Buffer.from(params.data as ArrayBuffer);
+    await this.client.issueAttachments.addAttachment({
+      issueIdOrKey: params.issueKey,
+      attachment: { filename: params.filename, file: fileData, mimeType: params.mimeType },
+    });
   }
 }
 

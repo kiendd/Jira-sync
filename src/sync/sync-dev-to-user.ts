@@ -21,7 +21,8 @@ export const syncDevProjectToUserProject = async (
   for (const issue of issues) {
     const statusName = issue.fields?.status?.name;
     const normalizedStatus = typeof statusName === 'string' ? statusName.trim() : '';
-    const interestedStatuses = ['In Progress', 'Resolved', 'Done', 'Cancelled', 'Reopened'];
+    // Only mirror statuses that affect User; Dev "Done" is treated as intermediate (skip sync)
+    const interestedStatuses = ['In Progress', 'Closed', 'Cancelled', 'Reopened'];
     if (!interestedStatuses.includes(normalizedStatus)) {
       continue;
     }
@@ -64,14 +65,9 @@ export const syncDevProjectToUserProject = async (
       }
     }
 
-    if (normalizedStatus === 'Resolved') {
-      const skipStatusChange = userStatus === 'Resolved' || userStatus === 'Done' || userStatus === 'Closed';
+    if (normalizedStatus === 'Closed') {
+      const skipStatusChange = userStatus === 'Resolved' || userStatus === 'Closed';
       await resolveUserIssue(userIssueKey, skipStatusChange, 'Resolved');
-    }
-
-    if (normalizedStatus === 'Done') {
-      const skipStatusChange = userStatus === 'Done' || userStatus === 'Closed';
-      await resolveUserIssue(userIssueKey, skipStatusChange, 'Done');
       await commentUserIssue(
         userIssueKey,
         `Lỗi đã được xử lý tại issue ${issue.key}`

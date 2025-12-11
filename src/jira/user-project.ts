@@ -13,6 +13,8 @@ export const getUpdatedUserProjectIssues = async (
     'status',
     'severity',
     'replied',
+    'updated',
+    'attachment',
   ];
   return jiraClient.searchIssues({
     jql: `project = ${projectKey} ORDER BY updated ASC`,
