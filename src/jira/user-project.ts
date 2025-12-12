@@ -28,7 +28,7 @@ export const updateUserProjectDescriptionWithDevLink = async (
   currentDescription: string | null | undefined,
   devIssueUrl: string
 ): Promise<void> => {
-  const description = appendLinkToDescription(currentDescription, devIssueUrl);
+  const description = appendLinkToDescription(currentDescription, devIssueUrl, 'Dev Link');
   const existing = typeof currentDescription === 'string' ? currentDescription : '';
   if (description === existing) {
     return;

@@ -29,7 +29,8 @@ export const createDevIssue = async (params: {
 }): Promise<{ key: string; id: string; url: string }> => {
   const description = appendLinkToDescription(
     params.description ?? '',
-    params.userIssueUrl
+    params.userIssueUrl,
+    'User Link'
   );
   const fields: Record<string, any> = {
     project: { key: projectKey },
@@ -50,7 +51,7 @@ export const updateDevProjectDescriptionWithUserLink = async (
   currentDescription: string | null | undefined,
   userIssueUrl: string
 ): Promise<void> => {
-  const description = appendLinkToDescription(currentDescription, userIssueUrl);
+  const description = appendLinkToDescription(currentDescription, userIssueUrl, 'User Link');
   const existing = typeof currentDescription === 'string' ? currentDescription : '';
   if (description === existing) {
     return;

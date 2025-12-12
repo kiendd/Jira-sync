@@ -17,6 +17,7 @@ Service nền Node.js/TypeScript đồng bộ 2 Jira project:
 - Tạo file env: `cp .env.example .env` và điền các giá trị `JIRA_*`, `USER_PROJECT_KEY`, `DEV_PROJECT_KEY`, `DATABASE_URL`, `DATABASE_NAME`, `SYNC_INTERVAL_MINUTES`
   - `JIRA_AUTH_TYPE=basic` (mặc định) dùng email + API token Jira Cloud
   - Nếu Jira Data Center/SAML chặn basic, đặt `JIRA_AUTH_TYPE=pat` và dùng Personal Access Token vào `JIRA_API_TOKEN`
+  - `LOG_PRETTY=true` (tùy chọn) nếu muốn log text dễ đọc; để trống/false khi deploy production
 - Kết nối MongoDB không cần migrate; service tự tạo collection khi ghi dữ liệu
 
 ### Chạy service

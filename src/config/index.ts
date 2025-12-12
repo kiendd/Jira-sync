@@ -19,6 +19,11 @@ const optionalEnv = (key: string): string | undefined => {
 
 const authTypeRaw = optionalEnv('JIRA_AUTH_TYPE')?.toLowerCase();
 const jiraAuthType = authTypeRaw === 'pat' ? 'pat' : 'basic';
+const parseBool = (value: string | undefined): boolean => {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === 'true' || normalized === '1' || normalized === 'yes';
+};
 
 export const config = {
   jira: {
@@ -35,10 +40,11 @@ export const config = {
 };
 
 const pino = (pinoImport as any).default ?? pinoImport;
+const prettyLogs = parseBool(process.env.LOG_PRETTY) || process.env.NODE_ENV === 'development';
 
 export const logger = pino({
   level: process.env.LOG_LEVEL || 'info',
-  transport: process.env.NODE_ENV === 'development' ? { target: 'pino-pretty' } : undefined,
+  transport: prettyLogs ? { target: 'pino-pretty' } : undefined,
 });
 
 export const buildIssueUrl = (issueKey: string): string => `${config.jira.baseUrl}/browse/${issueKey}`;

@@ -17,7 +17,7 @@ export const descriptionHasIssueLinkForProject = (
   }
   const escapedProjectKey = projectKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const pattern = new RegExp(
-    `Link:\\s*https?://[^\\s]+/browse/${escapedProjectKey}-\\d+`,
+    `https?://[^\\s]+/browse/${escapedProjectKey}-\\d+`,
     'i'
   );
   return pattern.test(description);
@@ -25,7 +25,8 @@ export const descriptionHasIssueLinkForProject = (
 
 export const appendLinkToDescription = (
   description: string | null | undefined,
-  link: string
+  link: string,
+  label = 'Link'
 ): string => {
   const current = typeof description === 'string' ? description : '';
   if (descriptionHasLink(current, link)) {
@@ -33,6 +34,7 @@ export const appendLinkToDescription = (
   }
 
   const trimmed = current.trimEnd();
-  const linkLine = `Link: ${link}`;
+  const linkLabel = label.trim() || 'Link';
+  const linkLine = `${linkLabel}: ${link}`;
   return trimmed ? `${trimmed}\n\n${linkLine}` : linkLine;
 };
