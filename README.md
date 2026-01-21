@@ -43,3 +43,7 @@ Service nền Node.js/TypeScript đồng bộ 2 Jira project:
 - `src/sync`: luồng đồng bộ hai chiều
 - `src/db`: Mongoose models và repository
 - `src/scheduler.ts`: cron theo `SYNC_INTERVAL_MINUTES`
+
+### Deployment
+
+Xem [DEPLOY.md](DEPLOY.md) để biết hướng dẫn triển khai lên server Ubuntu với cấu hình multi-instance.
