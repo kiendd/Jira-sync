@@ -25,6 +25,50 @@ export type DevProjectIssueStateDoc = {
   updated_at: Date;
 };
 
+export type SyncDirection = 'user_to_dev' | 'dev_to_user' | 'both' | 'none';
+
+export type SyncRuleActions = {
+  createIssue?: boolean;
+  syncStatus?: boolean;
+  syncAttachments?: boolean;
+  addComment?: boolean;
+  addCrossLink?: boolean;
+  commentTemplate?: string;
+  targetStatus?: string;
+};
+
+export type SyncRule = {
+  id?: string;
+  sourceStatus: string;
+  targetProject: 'dev' | 'user';
+  targetStatus?: string;
+  syncDirection: SyncDirection;
+  enabled: boolean;
+  priority?: number;
+  description?: string;
+  conditions?: {
+    requireMapping?: boolean;
+    onStatusChange?: boolean;
+  };
+  actions?: SyncRuleActions;
+};
+
+export type SyncFlowConfigDoc = {
+  name: string;
+  description?: string;
+  userProjectKey: string;
+  devProjectKey: string;
+  defaultBehavior?: {
+    syncAttachments?: boolean;
+    addCrossLinks?: boolean;
+    onlyOnStatusChange?: boolean;
+    skipIntermediateStatuses?: boolean;
+  };
+  rules: SyncRule[];
+  created_at?: Date;
+  updated_at?: Date;
+};
+
 const JiraMappingSchema = new Schema<JiraMappingDoc>(
   {
     user_issue_key: { type: String, required: true, unique: true },

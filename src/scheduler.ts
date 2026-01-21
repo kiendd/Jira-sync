@@ -4,11 +4,14 @@ import { syncUserProjectToDevProject } from './sync/sync-user-to-dev.js';
 import { syncDevProjectToUserProject } from './sync/sync-dev-to-user.js';
 import { getLastSync, updateLastSync } from './db/repo.js';
 import { monitorUserProjectStatuses } from './sync/monitor-user-project-status.js';
+import { syncConfigLoader } from './sync/config-loader.js';
 
 export const runSyncCycle = async (): Promise<void> => {
   const lastSync = await getLastSync();
-  await syncUserProjectToDevProject(lastSync);
-  await syncDevProjectToUserProject(lastSync);
+  const syncConfig = syncConfigLoader.loadConfig();
+
+  await syncUserProjectToDevProject(lastSync, syncConfig);
+  await syncDevProjectToUserProject(lastSync, syncConfig);
   await monitorUserProjectStatuses();
   await updateLastSync(new Date());
 };

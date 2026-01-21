@@ -1,0 +1,185 @@
+{
+  "$schema": "./schemas/sync-rules.schema.json",
+  "name": "example-sync-config",
+  "description": "Ví dụ cấu hình cho Jira project sync. Copy và chỉnh sửa file này để tạo config riêng cho instance của bạn.",
+  "userProjectKey": "USER",
+  "devProjectKey": "DEV",
+  "defaultBehavior": {
+    "syncAttachments": true,
+    "addCrossLinks": true,
+    "onlyOnStatusChange": true,
+    "skipIntermediateStatuses": true
+  },
+  "rules": [
+    {
+      "id": "user-will-do",
+      "sourceStatus": "Will Do",
+      "targetProject": "dev",
+      "syncDirection": "user_to_dev",
+      "enabled": true,
+      "priority": 1,
+      "description": "Tạo Dev issue khi User issue chuyển sang 'Will Do'",
+      "conditions": {
+        "requireMapping": false
+      },
+      "actions": {
+        "createIssue": true,
+        "syncAttachments": true,
+        "addCrossLink": true,
+        "addComment": true,
+        "commentTemplate": "Đã tạo Dev Issue: ${targetKey}"
+      }
+    },
+    {
+      "id": "user-reopened",
+      "sourceStatus": "Reopened",
+      "targetProject": "dev",
+      "syncDirection": "user_to_dev",
+      "enabled": true,
+      "priority": 2,
+      "description": "Sync 'Reopened' từ User sang Dev",
+      "conditions": {
+        "requireMapping": true
+      },
+      "actions": {
+        "syncStatus": true,
+        "targetStatus": "Reopened"
+      }
+    },
+    {
+      "id": "dev-in-progress",
+      "sourceStatus": "In Progress",
+      "targetProject": "user",
+      "syncDirection": "dev_to_user",
+      "enabled": true,
+      "priority": 3,
+      "description": "Sync 'In Progress' từ Dev sang User",
+      "conditions": {
+        "requireMapping": true,
+        "onStatusChange": true
+      },
+      "actions": {
+        "syncStatus": true,
+        "targetStatus": "In Progress"
+      }
+    },
+    {
+      "id": "dev-closed",
+      "sourceStatus": "Closed",
+      "targetProject": "user",
+      "syncDirection": "dev_to_user",
+      "enabled": true,
+      "priority": 4,
+      "description": "Sync 'Closed' từ Dev sang User (map sang 'Resolved')",
+      "conditions": {
+        "requireMapping": true,
+        "onStatusChange": true
+      },
+      "actions": {
+        "syncStatus": true,
+        "targetStatus": "Resolved",
+        "addCrossLink": true,
+        "addComment": true,
+        "commentTemplate": "Lỗi đã được xử lý tại issue ${sourceKey}"
+      }
+    },
+    {
+      "id": "dev-cancelled",
+      "sourceStatus": "Cancelled",
+      "targetProject": "user",
+      "syncDirection": "dev_to_user",
+      "enabled": true,
+      "priority": 5,
+      "description": "Sync 'Cancelled' từ Dev sang User",
+      "conditions": {
+        "requireMapping": true,
+        "onStatusChange": true
+      },
+      "actions": {
+        "syncStatus": true,
+        "targetStatus": "Cancelled"
+      }
+    },
+    {
+      "id": "dev-reopened",
+      "sourceStatus": "Reopened",
+      "targetProject": "user",
+      "syncDirection": "dev_to_user",
+      "enabled": true,
+      "priority": 6,
+      "description": "Sync 'Reopened' từ Dev sang User với comment",
+      "conditions": {
+        "requireMapping": true,
+        "onStatusChange": true
+      },
+      "actions": {
+        "syncStatus": true,
+        "targetStatus": "Reopened",
+        "addComment": true,
+        "commentTemplate": "Issue DEV ${sourceKey} đã được Reopened, cần xử lý lại"
+      }
+    }
+  ],
+  "_note": "Đây là file mẫu. Copy thành file mới (ví dụ: sync-ab.json) và chỉnh sửa theo nhu cầu.",
+  "_fields": {
+    "name": "Tên config, nên đặt tên theo cặp project (ví dụ: project-ab)",
+    "description": "Mô tả config này dùng cho mục đích gì",
+    "userProjectKey": "Project key của User project (ví dụ: USER-A)",
+    "devProjectKey": "Project key của Dev project (ví dụ: DEV-B)",
+    "defaultBehavior": {
+      "syncAttachments": "Có sync attachments không",
+      "addCrossLinks": "Có thêm cross-link trong description không",
+      "onlyOnStatusChange": "Chỉ sync khi status thay đổi (Dev→User)",
+      "skipIntermediateStatuses": "Bỏ qua các status trung gian như 'Done'"
+    }
+  },
+  "_rule_fields": {
+    "id": "Định danh duy nhất cho rule",
+    "sourceStatus": "Status ở project source trigger sync",
+    "targetProject": "Project đích ('dev' hoặc 'user')",
+    "targetStatus": "Status ở project đích (optional, nếu khác sourceStatus)",
+    "syncDirection": "Hướng sync: user_to_dev, dev_to_user, both, hoặc none",
+    "enabled": "Bật/tắt rule này",
+    "priority": "Thứ tự ưu tiên (số nhỏ = ưu tiên cao)",
+    "conditions": {
+      "requireMapping": "Có yêu cầu mapping đã tồn tại không",
+      "onStatusChange": "Chỉ chạy khi status thay đổi"
+    },
+    "actions": {
+      "createIssue": "Tạo issue mới ở project đích",
+      "syncStatus": "Đồng bộ status",
+      "syncAttachments": "Copy attachments",
+      "addCrossLink": "Thêm cross-link trong description",
+      "addComment": "Thêm comment khi sync",
+      "commentTemplate": "Template cho comment (dùng ${sourceKey}, ${targetKey})",
+      "targetStatus": "Status đích khi sync (override rule.targetStatus)"
+    }
+  },
+  "_examples": {
+    "user_to_dev": {
+      "sourceStatus": "Will Do",
+      "targetProject": "dev",
+      "syncDirection": "user_to_dev",
+      "actions": { "createIssue": true }
+    },
+    "dev_to_user": {
+      "sourceStatus": "Closed",
+      "targetProject": "user",
+      "targetStatus": "Resolved",
+      "syncDirection": "dev_to_user",
+      "actions": { "syncStatus": true }
+    },
+    "bidirectional": {
+      "sourceStatus": "Reopened",
+      "targetProject": "user",
+      "syncDirection": "both",
+      "actions": { "syncStatus": true }
+    },
+    "disabled": {
+      "sourceStatus": "Draft",
+      "syncDirection": "user_to_dev",
+      "enabled": false,
+      "actions": {}
+    }
+  }
+}

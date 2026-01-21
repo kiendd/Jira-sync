@@ -1,5 +1,20 @@
 version: "3.9"
 
+# ==============================================================================
+# Jira Sync Service - Single Instance Deployment
+# ==============================================================================
+#
+# File này dùng để chạy MỘT instance duy nhất.
+# Để chạy NHIỀU instances (nhiều cặp project), sử dụng:
+#   docker-compose -f docker-compose.multi.yml up -d
+#
+# Xem thêm:
+#   - docker-compose.multi.yml: Multi-instance configuration
+#   - .env.multi.example: Environment template cho multi-instance
+#   - config/sync-rules.example.json: Example sync rules
+#
+# ==============================================================================
+
 services:
   app:
     build: .
@@ -20,6 +35,20 @@ services:
       - mongo
     env_file:
       - .env
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
   mongo:
     image: mongo:7
     restart: unless-stopped
@@ -27,6 +56,29 @@ services:
       - "27017:27017"
     volumes:
       - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   mongo-data:
+
+# ==============================================================================
+# Quick Commands
+# ==============================================================================
+#
+# Chạy single instance:
+#   docker-compose up -d
+#
+# Chạy multi-instance:
+#   docker-compose -f docker-compose.multi.yml up -d
+#
+# Xem logs:
+#   docker logs jira-sync-app
+#
+# Dừng:
+#   docker-compose down
+#
+# ==============================================================================

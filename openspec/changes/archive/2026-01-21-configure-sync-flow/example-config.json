@@ -1,0 +1,122 @@
+{
+  "name": "default",
+  "description": "Cấu hình mặc định - giữ nguyên behavior hiện tại của sync flow",
+  "userProjectKey": "USER",
+  "devProjectKey": "DEV",
+  "defaultBehavior": {
+    "syncAttachments": true,
+    "addCrossLinks": true,
+    "skipIntermediateStatuses": true,
+    "onlyOnStatusChange": true
+  },
+  "rules": [
+    {
+      "id": "user-will-do",
+      "sourceStatus": "Will Do",
+      "targetProject": "dev",
+      "syncDirection": "user_to_dev",
+      "enabled": true,
+      "description": "Khi User issue chuyển sang 'Will Do' và chưa có Dev issue → Tạo Dev issue mới",
+      "conditions": {
+        "requireMapping": false
+      },
+      "actions": {
+        "createIssue": true,
+        "syncAttachments": true,
+        "addCrossLink": true,
+        "addComment": true,
+        "commentTemplate": "Đã tạo Dev Issue: ${targetKey}"
+      }
+    },
+    {
+      "id": "user-reopened",
+      "sourceStatus": "Reopened",
+      "targetProject": "dev",
+      "syncDirection": "user_to_dev",
+      "enabled": true,
+      "description": "Khi User issue chuyển sang 'Reopened' → Chuyển Dev issue sang 'Reopened'",
+      "conditions": {
+        "requireMapping": true
+      },
+      "actions": {
+        "syncStatus": true,
+        "targetStatus": "Reopened"
+      }
+    },
+    {
+      "id": "dev-in-progress",
+      "sourceStatus": "In Progress",
+      "targetProject": "user",
+      "syncDirection": "dev_to_user",
+      "enabled": true,
+      "description": "Khi Dev issue chuyển sang 'In Progress' → Chuyển User issue sang 'In Progress'",
+      "conditions": {
+        "requireMapping": true,
+        "onStatusChange": true
+      },
+      "actions": {
+        "syncStatus": true,
+        "targetStatus": "In Progress"
+      }
+    },
+    {
+      "id": "dev-closed",
+      "sourceStatus": "Closed",
+      "targetProject": "user",
+      "syncDirection": "dev_to_user",
+      "enabled": true,
+      "description": "Khi Dev issue chuyển sang 'Closed' → Resolve User issue + comment",
+      "conditions": {
+        "requireMapping": true,
+        "onStatusChange": true
+      },
+      "actions": {
+        "syncStatus": true,
+        "targetStatus": "Resolved",
+        "addCrossLink": true,
+        "addComment": true,
+        "commentTemplate": "Lỗi đã được xử lý tại issue ${sourceKey}"
+      }
+    },
+    {
+      "id": "dev-cancelled",
+      "sourceStatus": "Cancelled",
+      "targetProject": "user",
+      "syncDirection": "dev_to_user",
+      "enabled": true,
+      "description": "Khi Dev issue chuyển sang 'Cancelled' → Chuyển User issue sang 'Cancelled'",
+      "conditions": {
+        "requireMapping": true,
+        "onStatusChange": true
+      },
+      "actions": {
+        "syncStatus": true,
+        "targetStatus": "Cancelled"
+      }
+    },
+    {
+      "id": "dev-reopened",
+      "sourceStatus": "Reopened",
+      "targetProject": "user",
+      "syncDirection": "dev_to_user",
+      "enabled": true,
+      "description": "Khi Dev issue chuyển sang 'Reopened' → Chuyển User issue sang 'Reopened' + comment",
+      "conditions": {
+        "requireMapping": true,
+        "onStatusChange": true
+      },
+      "actions": {
+        "syncStatus": true,
+        "targetStatus": "Reopened",
+        "addComment": true,
+        "commentTemplate": "Issue DEV ${sourceKey} đã được Reopened, cần xử lý lại"
+      }
+    }
+  ],
+  "_notes": {
+    "statusChangeRequired": "Tất cả rules Dev→User chỉ chạy khi status thực sự thay đổi",
+    "intermediateStatuses": "Dev 'Done' bị bỏ qua (không trigger sync)",
+    "crossLinks": "Cross-links được thêm vào description nếu chưa có",
+    "issueType": "Khi tạo Dev issue mới, dùng issueType từ User issue gốc"
+  }
+}
