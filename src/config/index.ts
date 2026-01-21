@@ -36,7 +36,7 @@ export const config = {
   },
   syncIntervalMinutes: Number(process.env.SYNC_INTERVAL_MINUTES || 5),
   databaseUrl: requireEnv('DATABASE_URL'),
-  databaseName: requireEnv('DATABASE_NAME'),
+  databaseName: optionalEnv('WORKER_DATABASE_NAME') || requireEnv('DATABASE_NAME'),
 };
 
 const pino = (pinoImport as any).default ?? pinoImport;

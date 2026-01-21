@@ -1,84 +1,127 @@
 version: "3.9"
 
-# ==============================================================================
-# Jira Sync Service - Single Instance Deployment
-# ==============================================================================
+# Docker Compose Consolidated Configuration
+# ==========================================
+# File này chạy nhiều sync pairs trong 1 container sử dụng child processes.
+# Tiết kiệm tài nguyên: 1 container thay vì N containers, 1 MongoDB thay vì N MongoDB.
 #
-# File này dùng để chạy MỘT instance duy nhất.
-# Để chạy NHIỀU instances (nhiều cặp project), sử dụng:
-#   docker-compose -f docker-compose.multi.yml up -d
+# Cách sử dụng:
+#   1. Tạo config files trong config/ (sync-ab.json, sync-cd.json, ...)
+#   2. Copy .env.consolidated.example thành .env và cấu hình
+#   3. Build và chạy: docker-compose -f docker-compose.consolidated.yml up -d
 #
-# Xem thêm:
-#   - docker-compose.multi.yml: Multi-instance configuration
-#   - .env.multi.example: Environment template cho multi-instance
-#   - config/sync-rules.example.json: Example sync rules
-#
-# ==============================================================================
+# Thêm sync pair mới:
+#   1. Tạo file config mới (ví dụ: config/sync-xy.json)
+#   2. Restart container
 
 services:
-  app:
-    build: .
+  # ========================================
+  # Jira Sync Service (Single Container)
+  # ========================================
+  jira-sync:
+    image: jira-sync:latest
+    container_name: jira-sync-consolidated
     restart: unless-stopped
     environment:
-      NODE_ENV: production
+      # Jira authentication (dùng cho tất cả workers)
       JIRA_AUTH_TYPE: ${JIRA_AUTH_TYPE:-pat}
       JIRA_BASE_URL: ${JIRA_BASE_URL}
       JIRA_EMAIL: ${JIRA_EMAIL:-}
       JIRA_API_TOKEN: ${JIRA_API_TOKEN}
       USER_PROJECT_KEY: ${USER_PROJECT_KEY}
       DEV_PROJECT_KEY: ${DEV_PROJECT_KEY}
-      SYNC_INTERVAL_MINUTES: ${SYNC_INTERVAL_MINUTES:-5}
+      # Database (shared MongoDB instance)
       DATABASE_URL: mongodb://mongo:27017
-      DATABASE_NAME: ${DATABASE_NAME:-jira_sync}
+      # Sync settings
+      SYNC_INTERVAL_MINUTES: ${SYNC_INTERVAL_MINUTES:-5}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Health check server
+      PORT: ${PORT:-3000}
+      # Config directory
+      CONFIG_DIR: /app/config
     depends_on:
       - mongo
-    env_file:
-      - .env
-    # Health check
+    volumes:
+      # Mount tất cả config files
+      - ./config:/app/config:ro
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+    networks:
+      default:
+        aliases:
+          - jira-sync
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
-    # Logging
     logging:
       driver: "json-file"
       options:
         max-size: "100m"
         max-file: "3"
 
+  # ========================================
+  # MongoDB (Single Instance, Multiple Databases)
+  # ========================================
   mongo:
     image: mongo:7
+    container_name: mongo-consolidated
     restart: unless-stopped
-    ports:
-      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: ${MONGO_INITDB_DATABASE:-jira_sync}
     volumes:
       - mongo-data:/data/db
+    networks:
+      default:
+        aliases:
+          - mongo
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 5
 
+# ========================================
+# Network Configuration
+# ========================================
+networks:
+  default:
+    name: jira-sync-consolidated
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.29.0.0/16
+
+# ========================================
+# Volumes
+# ========================================
 volumes:
   mongo-data:
+    name: jira-sync-consolidated-mongo
 
-# ==============================================================================
-# Quick Commands
-# ==============================================================================
+# ========================================
+# Hướng dẫn cấu hình
+# ========================================
+# 1. Tạo config files trong config/:
+#    cp config/sync-rules.example.json config/sync-ab.json
+#    cp config/sync-rules.example.json config/sync-cd.json
 #
-# Chạy single instance:
-#   docker-compose up -d
+# 2. Chỉnh sửa mỗi config file:
+#    - Đặt userProjectKey và devProjectKey đúng
+#    - Đặt tên config phù hợp (name field)
 #
-# Chạy multi-instance:
-#   docker-compose -f docker-compose.multi.yml up -d
+# 3. Cấu hình .env:
+#    cp .env.consolidated.example .env
+#    nano .env
 #
-# Xem logs:
-#   docker logs jira-sync-app
+# 4. Build và chạy:
+#    docker-compose -f docker-compose.consolidated.yml build
+#    docker-compose -f docker-compose.consolidated.yml up -d
 #
-# Dừng:
-#   docker-compose down
+# 5. Kiểm tra health:
+#    curl http://localhost:3000/health
 #
-# ==============================================================================
+# 6. Xem logs:
+#    docker logs -f jira-sync-consolidated

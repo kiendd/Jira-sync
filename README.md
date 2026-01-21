@@ -46,4 +46,4 @@ Service nền Node.js/TypeScript đồng bộ 2 Jira project:
 
 ### Deployment
 
-Xem [DEPLOY.md](DEPLOY.md) để biết hướng dẫn triển khai lên server Ubuntu với cấu hình multi-instance.
+Xem [DEPLOY.md](DEPLOY.md) để biết hướng dẫn triển khai lên server Ubuntu với kiến trúc consolidated (1 container, nhiều workers).

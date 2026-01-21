@@ -1,9 +1,16 @@
 {
   "$schema": "./schemas/sync-rules.schema.json",
   "name": "example-sync-config",
-  "description": "Ví dụ cấu hình cho Jira project sync. Copy và chỉnh sửa file này để tạo config riêng cho instance của bạn.",
+  "description": "Ví dụ cấu hình cho Jira project sync. Copy và chỉnh sửa file này để tạo config riêng cho worker của bạn.",
+  "jira": {
+    "baseUrl": "https://your-domain.atlassian.net",
+    "email": "bot@your-domain.com",
+    "apiToken": "your-jira-api-token",
+    "authType": "pat"
+  },
   "userProjectKey": "USER",
   "devProjectKey": "DEV",
+  "syncIntervalMinutes": 5,
   "defaultBehavior": {
     "syncAttachments": true,
     "addCrossLinks": true,
@@ -122,10 +129,17 @@
   ],
   "_note": "Đây là file mẫu. Copy thành file mới (ví dụ: sync-ab.json) và chỉnh sửa theo nhu cầu.",
   "_fields": {
-    "name": "Tên config, nên đặt tên theo cặp project (ví dụ: project-ab)",
+    "name": "Tên config, nên đặt theo tên worker (ví dụ: sync-ab)",
     "description": "Mô tả config này dùng cho mục đích gì",
+    "jira": {
+      "baseUrl": "Base URL của Jira instance (ví dụ: https://company.atlassian.net)",
+      "email": "Email cho authentication (chỉ khi authType là basic)",
+      "apiToken": "API Token hoặc Personal Access Token",
+      "authType": "Loại authentication: 'basic' hoặc 'pat'"
+    },
     "userProjectKey": "Project key của User project (ví dụ: USER-A)",
     "devProjectKey": "Project key của Dev project (ví dụ: DEV-B)",
+    "syncIntervalMinutes": "Khoảng cách giữa các lần sync (phút)",
     "defaultBehavior": {
       "syncAttachments": "Có sync attachments không",
       "addCrossLinks": "Có thêm cross-link trong description không",
@@ -152,34 +166,7 @@
       "addCrossLink": "Thêm cross-link trong description",
       "addComment": "Thêm comment khi sync",
       "commentTemplate": "Template cho comment (dùng ${sourceKey}, ${targetKey})",
-      "targetStatus": "Status đích khi sync (override rule.targetStatus)"
-    }
-  },
-  "_examples": {
-    "user_to_dev": {
-      "sourceStatus": "Will Do",
-      "targetProject": "dev",
-      "syncDirection": "user_to_dev",
-      "actions": { "createIssue": true }
-    },
-    "dev_to_user": {
-      "sourceStatus": "Closed",
-      "targetProject": "user",
-      "targetStatus": "Resolved",
-      "syncDirection": "dev_to_user",
-      "actions": { "syncStatus": true }
-    },
-    "bidirectional": {
-      "sourceStatus": "Reopened",
-      "targetProject": "user",
-      "syncDirection": "both",
-      "actions": { "syncStatus": true }
-    },
-    "disabled": {
-      "sourceStatus": "Draft",
-      "syncDirection": "user_to_dev",
-      "enabled": false,
-      "actions": {}
+      "targetStatus": "Status đích khi sync"
     }
   }
 }

@@ -5,6 +5,7 @@ import { syncDevProjectToUserProject } from './sync/sync-dev-to-user.js';
 import { getLastSync, updateLastSync } from './db/repo.js';
 import { monitorUserProjectStatuses } from './sync/monitor-user-project-status.js';
 import { syncConfigLoader } from './sync/config-loader.js';
+import { SyncFlowConfigDoc } from './db/models.js';
 
 export const runSyncCycle = async (): Promise<void> => {
   const lastSync = await getLastSync();
@@ -16,13 +17,20 @@ export const runSyncCycle = async (): Promise<void> => {
   await updateLastSync(new Date());
 };
 
-export const startScheduler = (): void => {
-  const interval = Number.isFinite(config.syncIntervalMinutes) && config.syncIntervalMinutes > 0
-    ? config.syncIntervalMinutes
-    : 5;
+export const startScheduler = (workerConfig?: SyncFlowConfigDoc | null): void => {
+  let interval: number;
+  
+  if (workerConfig?.syncIntervalMinutes !== undefined && workerConfig.syncIntervalMinutes > 0) {
+    interval = workerConfig.syncIntervalMinutes;
+  } else if (Number.isFinite(config.syncIntervalMinutes) && config.syncIntervalMinutes > 0) {
+    interval = config.syncIntervalMinutes;
+  } else {
+    interval = 5;
+  }
+  
   const cronExpr = `*/${interval} * * * *`;
 
-  logger.info({ cronExpr }, 'Starting scheduler');
+  logger.info({ cronExpr, workerConfig }, 'Starting scheduler');
 
   runSyncCycle().catch((err) => logger.error({ err }, 'Initial sync failed'));
   cron.schedule(cronExpr, () => {

@@ -1,6 +1,6 @@
 # Hướng dẫn triển khai Jira Sync lên Server
 
-Tài liệu này hướng dẫn triển khai Jira Sync Service với cấu hình multi-instance trên server Ubuntu.
+Tài liệu này hướng dẫn triển khai Jira Sync Service trên server Ubuntu với kiến trúc consolidated (1 container, nhiều workers).
 
 ## Mục lục
 
@@ -12,7 +12,7 @@ Tài liệu này hướng dẫn triển khai Jira Sync Service với cấu hình
 6. [Cấu hình Sync Rules](#6-cấu-hình-sync-rules)
 7. [Triển khai](#7-triển-khai)
 8. [Giám sát và bảo trì](#8-giám-sát-và-bảo-trì)
-9. [Thêm Instance mới](#9-thêm-instance-mới)
+9. [Thêm Worker mới](#9-thêm-worker-mới)
 10. [Xử lý sự cố](#10-xử-lý-sự-cố)
 11. [Quick Reference](#11-quick-reference)
 
@@ -20,52 +20,65 @@ Tài liệu này hướng dẫn triển khai Jira Sync Service với cấu hình
 
 ## 1. Tổng quan
 
-### 1.1 Multi-instance là gì?
+### 1.1 Kiến trúc Consolidated
 
-Multi-instance cho phép chạy nhiều Jira Sync instances độc lập trên cùng một server. Mỗi instance:
-- Có MongoDB riêng biệt
+Jira Sync chạy với **1 container duy nhất** sử dụng Node.js child processes để chạy nhiều sync workers. Mỗi worker:
 - Có cấu hình sync rules riêng
-- Có thể sync các cặp Jira project khác nhau
-- Hoàn toàn cách ly với các instances khác
-
-### 1.2 Khi nào nên dùng multi-instance?
-
-- Khi cần sync nhiều cặp Jira project khác nhau
-- Khi muốn cô lập dữ liệu giữa các môi trường (dev/staging/production)
-- Khi muốn các instances có thể cấu hình sync rules riêng biệt
-
-### 1.3 Kiến trúc tổng quan
+- Sử dụng database riêng trên MongoDB chia sẻ
+- Có scheduler độc lập
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         Server Ubuntu                            │
+│                    jira-sync Container (1)                       │
 │                                                                 │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │                   Docker Network: bridge                   │  │
-│  │                   Subnet: 172.28.0.0/16                    │  │
-│  │                                                           │  │
-│  │  ┌─────────────┐         ┌─────────────┐                  │  │
-│  │  │  sync-ab    │         │  sync-cd    │   ← Jira Sync    │  │
-│  │  │ Container   │         │ Container   │     Instances    │  │
-│  │  └──────┬──────┘         └──────┬──────┘                  │  │
-│  │         │                        │                         │  │
-│  │  ┌──────┴──────┐         ┌──────┴──────┐                  │  │
-│  │  │  mongo-ab   │         │  mongo-cd   │   ← MongoDB       │  │
-│  │  │  :27017     │         │  :27017     │     Instances     │  │
-│  │  └─────────────┘         └─────────────┘                  │  │
-│  │                                                           │  │
-│  └───────────────────────────────────────────────────────────┘  │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │                 Main Process                             │   │
+│  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐        │   │
+│  │  │ Config      │ │ Process     │ │ Health      │        │   │
+│  │  │ Loader      │ │ Manager     │ │ Server      │        │   │
+│  │  └─────────────┘ └─────────────┘ └─────────────┘        │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│           │                   │                   │             │
+│           ▼                   ▼                   ▼             │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │              Child Processes (Workers)                   │   │
+│  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐        │   │
+│  │  │ Worker AB   │ │ Worker CD   │ │ Worker XY   │        │   │
+│  │  │ DB: sync_ab │ │ DB: sync_cd │ │ DB: sync_xy │        │   │
+│  │  └─────────────┘ └─────────────┘ └─────────────┘        │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+           │
+           │ DATABASE_URL=mongodb://mongo:27017
+           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    mongo Container (1)                           │
+│                                                                 │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐               │
+│  │ sync_ab     │ │ sync_cd     │ │ sync_xy     │  <- Databases │
+│  │ (Database)  │ │ (Database)  │ │ (Database)  │               │
+│  └─────────────┘ └─────────────┘ └─────────────┘               │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 1.4 Các thành phần chính
+### 1.2 Ưu điểm
+
+| Tiêu chí | Giá trị |
+|----------|---------|
+| Containers | 1 sync + 1 MongoDB |
+| Memory | Tiết kiệm (O(1) thay vì O(N)) |
+| Disk | 1 volume thay vì N volumes |
+| Cấu hình | Đơn giản, dễ quản lý |
+
+### 1.3 Các thành phần chính
 
 | Thành phần | Mô tả |
 |------------|-------|
-| `docker-compose.multi.yml` | Docker Compose file cho multi-instance |
-| `.env.multi` | File biến môi trường (credentials) |
-| `config/sync-*.json` | File cấu hình sync rules cho từng instance |
+| `docker-compose.yml` | Docker Compose file |
+| `.env` | File biến môi trường (credentials) |
+| `config/sync-*.json` | File cấu hình sync rules cho từng worker |
 
 ---
 
@@ -100,7 +113,7 @@ echo \
 sudo apt update
 sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
 
-# Thêm user vào group docker (để chạy docker không cần sudo)
+# Thêm user vào group docker
 sudo usermod -aG docker $USER
 
 # Kích hoạt và khởi động Docker
@@ -117,12 +130,6 @@ docker --version
 docker compose version
 ```
 
-Kết quả mong đợi:
-```
-Docker version 24.0.x
-Docker Compose version v2.x.x
-```
-
 ### 2.4 Cấu hình UFW Firewall
 
 ```bash
@@ -132,24 +139,13 @@ sudo apt install -y ufw
 # Cho phép SSH (quan trọng để tránh lockout)
 sudo ufw allow 22/tcp
 
-# Cho phép HTTP/HTTPS nếu cần expose web interface
-# sudo ufw allow 80/tcp
-# sudo ufw allow 443/tcp
-
 # Bật firewall
 sudo ufw enable
-
-# Kiểm tra trạng thái
-sudo ufw status
 ```
-
-**Cảnh báo:** Luôn cho phép port 22/tcp trước khi bật UFW để tránh mất kết nối SSH.
 
 ---
 
 ## 3. Cấu hình GitHub Container Registry
-
-Phần này hướng dẫn đưa Docker image lên GitHub Container Registry (GHCR) để dễ dàng quản lý và deploy.
 
 ### 3.1 Tạo GitHub Personal Access Token (PAT)
 
@@ -157,13 +153,11 @@ Phần này hướng dẫn đưa Docker image lên GitHub Container Registry (GH
 2. Nhấn **Generate new token (classic)**
 3. Đặt tên gợi nhớ (ví dụ: `docker-registry`)
 4. Chọn scope: `read:packages`, `write:packages`, `delete:packages`
-5. Nhấn **Generate token**
-6. **Lưu lại token ngay** (sẽ không hiển thị lại)
+5. **Lưu lại token ngay** (sẽ không hiển thị lại)
 
 ### 3.2 Login vào GHCR
 
 ```bash
-# Thay thế USERNAME bằng GitHub username của bạn
 export GHCR_USERNAME="your-github-username"
 export GHCR_TOKEN="ghp_your-personal-access-token"
 
@@ -173,34 +167,24 @@ echo $GHCR_TOKEN | docker login ghcr.io -u $GHCR_USERNAME --password-stdin
 ### 3.3 Build và Push Image
 
 ```bash
-# Clone repository (nếu chưa clone)
-git clone https://github.com/$GHCR_USERNAME/jira-sync.git
-cd jira-sync
-
 # Build Docker image
 docker build -t jira-sync:latest .
 
 # Tag image với định dạng GHCR
 docker tag jira-sync:latest ghcr.io/$GHCR_USERNAME/jira-sync:latest
-docker tag jira-sync:latest ghcr.io/$GHCR_USERNAME/jira-sync:v1.0.0
 
 # Push lên GHCR
 docker push ghcr.io/$GHCR_USERNAME/jira-sync:latest
-docker push ghcr.io/$GHCR_USERNAME/jira-sync:v1.0.0
 ```
 
-### 3.4 Cập nhật docker-compose.multi.yml
+### 3.4 Cập nhật docker-compose.yml
 
-Chỉnh sửa `docker-compose.multi.yml`, thay đổi image line:
+Chỉnh sửa `docker-compose.yml`, thay đổi image line:
 
 ```yaml
 services:
-  sync-ab:
-    image: ghcr.io/$GHCR_USERNAME/jira-sync:latest  # Thay thế bằng username của bạn
-    # ... phần còn lại giữ nguyên
-
-  sync-cd:
-    image: ghcr.io/$GHCR_USERNAME/jira-sync:latest  # Thay thế bằng username của bạn
+  jira-sync:
+    image: ghcr.io/$GHCR_USERNAME/jira-sync:latest
     # ... phần còn lại giữ nguyên
 ```
 
@@ -211,7 +195,6 @@ services:
 ### 4.1 Clone Repository
 
 ```bash
-# Thay thế URL bằng repository của bạn
 git clone https://github.com/your-username/jira-sync.git
 cd jira-sync
 ```
@@ -219,32 +202,13 @@ cd jira-sync
 ### 4.2 Tạo cấu trúc thư mục
 
 ```bash
-# Tạo thư mục config nếu chưa có
 mkdir -p config
-
-# Kiểm tra cấu trúc
-ls -la
-```
-
-Cấu trúc thư mục mong đợi:
-```
-jira-sync/
-├── config/
-│   ├── sync-rules.example.json
-│   ├── sync-ab.json          # Sẽ tạo
-│   └── sync-cd.json          # Sẽ tạo
-├── docker-compose.multi.yml
-├── .env.multi                # Sẽ tạo
-└── ...
 ```
 
 ### 4.3 Copy các file cấu hình
 
 ```bash
-# Copy file môi trường
-cp .env.multi.example .env.multi
-
-# Copy file cấu hình sync rules cho từng instance
+cp .env.example .env
 cp config/sync-rules.example.json config/sync-ab.json
 cp config/sync-rules.example.json config/sync-cd.json
 ```
@@ -253,96 +217,52 @@ cp config/sync-rules.example.json config/sync-cd.json
 
 ## 5. Cấu hình môi trường
 
-Chỉnh sửa file `.env.multi` với thông tin của bạn:
-
 ```bash
-nano .env.multi
+nano .env
 ```
 
-### 5.1 Cấu hình chung (áp dụng cho tất cả instances)
+### 5.1 Cấu hình chung
 
 ```bash
-# Loại xác thực Jira: "basic" (email + token) hoặc "pat" (Personal Access Token)
-JIRA_AUTH_TYPE=pat
-
-# Khoảng cách giữa các lần sync (phút)
-SYNC_INTERVAL_MINUTES=5
-
-# Mức độ log: debug, info, warn, error
+# Log level: debug, info, warn, error
 LOG_LEVEL=info
+
+# Port cho health check server
+PORT=3000
 ```
 
-### 5.2 Cấu hình Instance AB (sync-ab)
+> **Lưu ý:** Cấu hình Jira (baseUrl, email, apiToken) và sync interval được cấu hình **riêng cho từng worker** trong file `config/sync-*.json`. Xem [Section 6](#6-cấu-hình-sync-rules).
 
-```bash
-# Jira URL cho instance AB
-JIRA_BASE_URL_AB=https://company-a.atlassian.net
+### 5.2 Cách lấy Jira API Token
 
-# Email (chỉ cần khi JIRA_AUTH_TYPE=basic)
-JIRA_EMAIL_AB=bot-a@company.com
-
-# API Token hoặc PAT
-JIRA_API_TOKEN_AB=your-jira-api-token-here
-
-# Project keys
-USER_PROJECT_KEY_A=USER-A
-DEV_PROJECT_KEY_A=DEV-A
-
-# Database name (mỗi instance có DB riêng)
-DATABASE_NAME_A=sync_ab
-```
-
-### 5.3 Cấu hình Instance CD (sync-cd)
-
-```bash
-# Jira URL cho instance CD
-JIRA_BASE_URL_CD=https://company-b.atlassian.net
-
-# Email (chỉ cần khi JIRA_AUTH_TYPE=basic)
-JIRA_EMAIL_CD=bot-b@company.com
-
-# API Token hoặc PAT
-JIRA_API_TOKEN_CD=your-other-jira-api-token-here
-
-# Project keys
-USER_PROJECT_KEY_C=USER-C
-DEV_PROJECT_KEY_C=DEV-C
-
-# Database name
-DATABASE_NAME_C=sync_cd
-```
-
-### 5.4 Cách lấy Jira API Token
-
-1. Đăng nhập vào: https://id.atlassian.com/manage-profile/security/api-tokens
+1. Đăng nhập: https://id.atlassian.com/manage-profile/security/api-tokens
 2. Nhấn **Create API token**
-3. Đặt tên mô tả (ví dụ: `Jira Sync - Instance AB`)
-4. Nhấn **Create**
-5. **Copy token ngay** và dán vào `.env.multi`
-
-**Lưu ý:** Bảo mật token, không commit vào git!
+3. Đặt tên mô tả
+4. **Copy token ngay** và dán vào `.env`
 
 ---
 
 ## 6. Cấu hình Sync Rules
 
-Mỗi instance có file cấu hình sync rules riêng trong thư mục `config/`.
-
-### 6.1 Cấu hình cho Instance AB (sync-ab.json)
+### 6.1 Cấu hình cho Worker AB
 
 ```bash
 nano config/sync-ab.json
 ```
 
-Chỉnh sửa các trường quan trọng:
-
 ```json
 {
-  "$schema": "./schemas/sync-rules.schema.json",
-  "name": "project-ab-sync",
+  "name": "sync-ab",
   "description": "Sync configuration for Project A ↔ Project B",
+  "jira": {
+    "baseUrl": "https://your-domain.atlassian.net",
+    "email": "bot@your-domain.com",
+    "apiToken": "your-jira-api-token",
+    "authType": "pat"
+  },
   "userProjectKey": "USER-A",
   "devProjectKey": "DEV-A",
+  "syncIntervalMinutes": 5,
   "defaultBehavior": {
     "syncAttachments": true,
     "addCrossLinks": true,
@@ -364,57 +284,35 @@ Chỉnh sửa các trường quan trọng:
         "addComment": true,
         "commentTemplate": "Đã tạo Dev Issue: ${targetKey}"
       }
-    },
-    {
-      "id": "dev-closed",
-      "sourceStatus": "Closed",
-      "targetProject": "user",
-      "syncDirection": "dev_to_user",
-      "enabled": true,
-      "priority": 4,
-      "actions": {
-        "syncStatus": true,
-        "targetStatus": "Resolved",
-        "addCrossLink": true,
-        "addComment": true,
-        "commentTemplate": "Lỗi đã được xử lý tại issue ${sourceKey}"
-      }
     }
   ]
 }
 ```
 
-### 6.2 Cấu hình cho Instance CD (sync-cd.json)
+### 6.2 Cấu hình cho Worker CD
 
 ```bash
 nano config/sync-cd.json
 ```
 
-Tương tự, chỉnh sửa project keys và rules theo nhu cầu:
-
 ```json
 {
-  "name": "project-cd-sync",
+  "name": "sync-cd",
   "description": "Sync configuration for Project C ↔ Project D",
+  "jira": {
+    "baseUrl": "https://other-domain.atlassian.net",
+    "email": "bot@other-domain.com",
+    "apiToken": "different-api-token",
+    "authType": "pat"
+  },
   "userProjectKey": "USER-C",
   "devProjectKey": "DEV-C",
+  "syncIntervalMinutes": 10,
   ...
 }
 ```
 
-### 6.3 Các trường cấu hình quan trọng
-
-| Trường | Mô tả |
-|--------|-------|
-| `name` | Tên config (đặt theo cặp project) |
-| `userProjectKey` | Project key của User project |
-| `devProjectKey` | Project key của Dev project |
-| `rules[].sourceStatus` | Status trigger sync |
-| `rules[].targetProject` | Đích: `"user"` hoặc `"dev"` |
-| `rules[].syncDirection` | Hướng sync: `user_to_dev`, `dev_to_user` |
-| `rules[].actions.createIssue` | Tạo issue mới |
-| `rules[].actions.syncStatus` | Đồng bộ status |
-| `rules[].targetStatus` | Status đích (nếu khác sourceStatus) |
+> **Quan trọng:** Mỗi worker có thể kết nối đến **Jira instance khác nhau** với credentials riêng. Điều này cho phép sync từ nhiều Jira projects khác nhau trong cùng một container.
 
 ---
 
@@ -423,112 +321,83 @@ Tương tự, chỉnh sửa project keys và rules theo nhu cầu:
 ### 7.1 Build và Push Image (nếu dùng GHCR)
 
 ```bash
-# Build image
 docker build -t jira-sync:latest .
-
-# Tag với GHCR
 docker tag jira-sync:latest ghcr.io/$GHCR_USERNAME/jira-sync:latest
-
-# Push lên GHCR
 docker push ghcr.io/$GHCR_USERNAME/jira-sync:latest
 ```
 
 ### 7.2 Khởi động Containers
 
 ```bash
-# Khởi động tất cả instances
-docker-compose -f docker-compose.multi.yml up -d
+# Khởi động
+docker-compose up -d
 
 # Hoặc build lại image trước khi chạy
-docker-compose -f docker-compose.multi.yml up -d --build
+docker-compose up -d --build
 ```
 
 ### 7.3 Kiểm tra trạng thái
 
 ```bash
-# Xem trạng thái tất cả containers
-docker-compose -f docker-compose.multi.yml ps
+docker-compose ps
 
 # Kết quả mong đợi:
 #   Name                   State           Ports
 #  ----------------------------------------------------------------
-#  jira-sync-ab           Up              3000/tcp
-#  jira-sync-cd           Up              3000/tcp
-#  mongo-ab               Up              27017/tcp
-#  mongo-cd               Up              27017/tcp
+#  jira-sync              Up              3000/tcp
+#  mongo                  Up              27017/tcp
 ```
 
-### 7.4 Xem logs để xác nhận hoạt động
+### 7.4 Xem logs
 
 ```bash
-# Logs của instance AB
-docker logs -f jira-sync-ab
+# Logs real-time
+docker logs -f jira-sync
 
-# Logs của instance CD
-docker logs -f jira-sync-cd
+# Logs 100 dòng cuối
+docker logs --tail 100 jira-sync
 ```
 
-Tìm dòng tương tự để xác nhận sync hoạt động:
+### 7.5 Kiểm tra Health
+
+```bash
+curl http://localhost:3000/health
+
+# Kết quả mong đợi:
+{
+  "status": "healthy",
+  "workers": [
+    {"name": "sync-ab", "status": "running", "lastHeartbeat": "..."},
+    {"name": "sync-cd", "status": "running", "lastHeartbeat": "..."}
+  ],
+  "timestamp": "..."
+}
 ```
-INFO: Starting sync cycle for project-ab
-INFO: Sync completed successfully
-```
-
-### 7.5 Xác nhận sync hoạt động đúng
-
-1. **Kiểm tra trạng thái health:**
-   ```bash
-   docker inspect --format='{{.State.Health.Status}}' jira-sync-ab
-   ```
-   Kết quả: `healthy`
-
-2. **Kiểm tra logs có error không:**
-   ```bash
-   docker-compose -f docker-compose.multi.yml logs | grep -i error
-   ```
-
-3. **Xác nhận kết nối Jira:**
-   ```bash
-   docker logs jira-sync-ab 2>&1 | grep -i "connected\|authenticated"
-   ```
 
 ---
 
 ## 8. Giám sát và Bảo trì
 
-### 8.1 Xem logs theo Instance
+### 8.1 Xem logs theo Worker
 
 ```bash
-# Xem logs real-time của instance AB
-docker logs -f jira-sync-ab
+# Xem logs real-time
+docker logs -f jira-sync
 
-# Xem logs 100 dòng cuối của instance CD
-docker logs --tail 100 jira-sync-cd
-
-# Xem logs từ 1 giờ trước
-docker logs --since 1h jira-sync-ab
+# Logs từ 1 giờ trước
+docker logs --since 1h jira-sync
 ```
 
-### 8.2 Kiểm tra Health
+### 8.2 Kiểm tra Health Status
 
 ```bash
-# Kiểm tra health status của tất cả instances
-docker inspect --format='{{.Name}}: {{.State.Health.Status}}' \
-  $(docker-compose -f docker-compose.multi.yml ps -q)
-
-# Kết quả mong đợi:
-# /jira-sync-ab: healthy
-# /jira-sync-cd: healthy
+curl http://localhost:3000/health
 ```
 
 ### 8.3 Kiểm tra tài nguyên
 
 ```bash
-# Xem resource usage
 docker stats
-
-# Xem chi tiết container
-docker inspect jira-sync-ab
 ```
 
 ### 8.4 Backup MongoDB
@@ -536,213 +405,87 @@ docker inspect jira-sync-ab
 #### Backup thủ công
 
 ```bash
-# Tạo thư mục backup
 mkdir -p backups/$(date +%Y%m%d)
 
-# Backup instance AB
-docker exec mongo-ab mongodump \
-  --db sync_ab \
-  --out /backup/sync_ab_$(date +%Y%m%d)
+# Backup worker AB
+docker exec mongo mongodump --db sync_ab --out /backup/
+docker cp mongo:/backup/sync_ab ./backups/$(date +%Y%m%d)/
 
-# Copy về local
-docker cp mongo-ab:/backup/sync_ab_$(date +%Y%m%d) ./backups/
-
-# Backup instance CD
-docker exec mongo-cd mongodump \
-  --db sync_cd \
-  --out /backup/sync_cd_$(date +%Y%m%d)
-
-docker cp mongo-cd:/backup/sync_cd_$(date +%Y%m%d) ./backups/
+# Backup worker CD
+docker exec mongo mongodump --db sync_cd --out /backup/
+docker cp mongo:/backup/sync_cd ./backups/$(date +%Y%m%d)/
 ```
 
 #### Backup tự động với cron
 
 ```bash
-# Mở crontab
 crontab -e
 
 # Thêm dòng sau để backup mỗi ngày lúc 2:00 AM
-0 2 * * * docker exec mongo-ab mongodump --db sync_ab --out /backup/daily/ && \
-  docker exec mongo-cd mongodump --db sync_cd --out /backup/daily/ && \
-  docker cp mongo-ab:/backup/daily ./backups/ab_$(date +\%Y\%m\%d) && \
-  docker cp mongo-cd:/backup/daily ./backups/cd_$(date +\%Y\%m\%d)
+0 2 * * * docker exec mongo mongodump --db sync_ab --out /backup/daily/ && \
+  docker cp mongo:/backup/daily ./backups/ab_$(date +\%Y\%m\%d) 2>/dev/null
 ```
 
 ### 8.5 Restore từ Backup
 
 ```bash
-# Restore instance AB
-docker exec -i mongo-ab mongorestore \
-  --db sync_ab \
-  --drop < backups/sync_ab_20240121
-
-# Restore instance CD
-docker exec -i mongo-cd mongorestore \
-  --db sync_cd \
-  --drop < backups/sync_cd_20240121
+# Restore worker AB
+docker cp ./backups/sync_ab/. mongo:/backup/
+docker exec mongo mongorestore --db sync_ab --drop /backup/sync_ab
 ```
 
 ### 8.6 Cập nhật phiên bản mới
 
 ```bash
-# Bước 1: Pull code mới
-git pull origin main
-
-# Bước 2: Rebuild image
+git pull
 docker build -t jira-sync:latest .
-
-# Bước 3: Tag và push lên GHCR (nếu dùng)
 docker tag jira-sync:latest ghcr.io/$GHCR_USERNAME/jira-sync:latest
 docker push ghcr.io/$GHCR_USERNAME/jira-sync:latest
-
-# Bước 4: Pull image mới trên server
 docker pull ghcr.io/$GHCR_USERNAME/jira-sync:latest
-
-# Bước 5: Restart tất cả instances
-docker-compose -f docker-compose.multi.yml down
-docker-compose -f docker-compose.multi.yml up -d
-
-# Hoặc restart từng instance
-docker restart jira-sync-ab jira-sync-cd
+docker-compose down
+docker-compose up -d
 ```
 
 ---
 
-## 9. Thêm Instance mới
+## 9. Thêm Worker mới
 
-Ví dụ: Thêm instance XY để sync USER-X ↔ DEV-X.
+Ví dụ: Thêm worker XY để sync USER-X ↔ DEV-X.
 
-### 9.1 Bước 1: Thêm biến vào .env.multi
-
-```bash
-nano .env.multi
-```
-
-Thêm vào cuối file:
-
-```bash
-# Instance XY (USER-X ↔ DEV-X)
-JIRA_BASE_URL_XY=https://company-c.atlassian.net
-JIRA_EMAIL_XY=bot-c@company.com
-JIRA_API_TOKEN_XY=your-third-jira-api-token
-USER_PROJECT_KEY_XY=USER-X
-DEV_PROJECT_KEY_XY=DEV-X
-DATABASE_NAME_XY=sync_xy
-```
-
-### 9.2 Bước 2: Thêm service vào docker-compose.multi.yml
-
-```bash
-nano docker-compose.multi.yml
-```
-
-Thêm vào cuối file:
-
-```yaml
-  # ========================================
-  # Instance 3: Project X <-> Project Y
-  # ========================================
-  sync-xy:
-    image: ghcr.io/your-username/jira-sync:latest
-    container_name: jira-sync-xy
-    restart: unless-stopped
-    environment:
-      INSTANCE_NAME: project-xy
-      JIRA_AUTH_TYPE: ${JIRA_AUTH_TYPE:-pat}
-      JIRA_BASE_URL: ${JIRA_BASE_URL_XY}
-      JIRA_EMAIL: ${JIRA_EMAIL_XY:-}
-      JIRA_API_TOKEN: ${JIRA_API_TOKEN_XY}
-      USER_PROJECT_KEY: ${USER_PROJECT_KEY_XY:-USER-X}
-      DEV_PROJECT_KEY: ${DEV_PROJECT_KEY_XY:-DEV-X}
-      SYNC_INTERVAL_MINUTES: ${SYNC_INTERVAL_MINUTES:-5}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-      DATABASE_URL: mongodb://mongo-xy:27017
-      DATABASE_NAME: ${DATABASE_NAME_XY:-sync_xy}
-    depends_on:
-      - mongo-xy
-    volumes:
-      - ./config/sync-xy.json:/app/config/sync-rules.json:ro
-    networks:
-      default:
-        aliases:
-          - sync-xy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "100m"
-        max-file: "3"
-
-  # MongoDB cho Instance XY
-  mongo-xy:
-    image: mongo:7
-    container_name: mongo-xy
-    restart: unless-stopped
-    environment:
-      MONGO_INITDB_DATABASE: ${DATABASE_NAME_XY:-sync_xy}
-    volumes:
-      - mongo-xy-data:/data/db
-    networks:
-      default:
-        aliases:
-          - mongo-xy
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-```
-
-Thêm volume:
-
-```yaml
-volumes:
-  mongo-ab-data:
-    name: jira-sync-multi-mongo-ab
-  mongo-cd-data:
-    name: jira-sync-multi-mongo-cd
-  mongo-xy-data:
-    name: jira-sync-multi-mongo-xy
-```
-
-### 9.3 Bước 3: Tạo file cấu hình sync
+### 9.1 Bước 1: Tạo file cấu hình
 
 ```bash
 cp config/sync-rules.example.json config/sync-xy.json
 nano config/sync-xy.json
 ```
 
-Chỉnh sửa `userProjectKey` và `devProjectKey`:
-
 ```json
 {
-  "name": "project-xy-sync",
+  "name": "sync-xy",
   "description": "Sync configuration for Project X ↔ Project Y",
+  "jira": {
+    "baseUrl": "https://x-domain.atlassian.net",
+    "email": "bot@x-domain.com",
+    "apiToken": "api-token-for-xy",
+    "authType": "pat"
+  },
   "userProjectKey": "USER-X",
   "devProjectKey": "DEV-X",
+  "syncIntervalMinutes": 5,
   ...
 }
 ```
 
-### 9.4 Bước 4: Khởi động instance mới
+### 9.2 Bước 2: Restart container
 
 ```bash
-# Pull image mới (nếu dùng GHCR)
-docker pull ghcr.io/your-username/jira-sync:latest
+docker-compose restart jira-sync
+```
 
-# Khởi động instance mới
-docker-compose -f docker-compose.multi.yml up -d sync-xy mongo-xy
+### 9.3 Bước 3: Kiểm tra
 
-# Kiểm tra trạng thái
-docker-compose -f docker-compose.multi.yml ps
-
-# Xem logs
-docker logs -f jira-sync-xy
+```bash
+curl http://localhost:3000/health
 ```
 
 ---
@@ -751,82 +494,49 @@ docker logs -f jira-sync-xy
 
 ### 10.1 Container không khởi động
 
-**Nguyên nhân thường gặp:**
-- File `.env.multi` chưa được cấu hình đúng
-- Image không tồn tại trên server
-- Port đã được sử dụng
-
-**Cách xử lý:**
-
 ```bash
-# Kiểm tra logs chi tiết
-docker logs jira-sync-ab
+# Xem logs chi tiết
+docker logs jira-sync
 
 # Kiểm tra trạng thái container
-docker inspect jira-sync-ab
-
-# Kiểm tra ports đang sử dụng
-netstat -tlnp | grep 3000
+docker inspect jira-sync
 ```
 
 ### 10.2 Lỗi kết nối Jira
 
-**Kiểm tra:**
-
 ```bash
-# Xem logs tìm lỗi Jira
-docker logs jira-sync-ab 2>&1 | grep -i "jira\|auth\|token"
+# Xem logs tìm lỗi
+docker logs jira-sync 2>&1 | grep -i "jira\|auth\|token"
 
-# Kiểm tra URL và credentials
-cat .env.multi | grep JIRA_
+# Kiểm tra credentials trong config file
+cat config/sync-ab.json | grep -A5 '"jira"'
 
-# Test kết nối thủ công
+# Test kết nối với credentials từ config
 curl -u "email:token" "https://your-domain.atlassian.net/rest/api/3/project"
 ```
 
-**Cách xử lý:**
-- Kiểm tra `JIRA_BASE_URL` đúng định dạng (có `https://`)
-- Kiểm tra `JIRA_API_TOKEN` còn hiệu lực
-- Kiểm tra quyền truy cập project
-
 ### 10.3 Lỗi kết nối MongoDB
-
-**Kiểm tra:**
 
 ```bash
 # Kiểm tra MongoDB container
-docker logs mongo-ab
+docker logs mongo
 
-# Test kết nối từ container
-docker exec -it jira-sync-ab sh -c "nc -zv mongo-ab 27017"
-
-# Kiểm tra DATABASE_URL trong .env.multi
-grep DATABASE .env.multi
+# Test kết nối
+docker exec -it jira-sync sh -c "nc -zv mongo 27017"
 ```
-
-**Cách xử lý:**
-- Đợi MongoDB hoàn toàn khởi động trước khi chạy sync
-- Kiểm tra `DATABASE_URL` đúng format: `mongodb://mongo-ab:27017`
 
 ### 10.4 Sync không hoạt động
 
-**Kiểm tra:**
-
 ```bash
-# Kiểm tra scheduler có chạy không
-docker logs jira-sync-ab | grep -i "scheduler\|sync.*cycle"
+# Kiểm tra scheduler trong logs
+docker logs jira-sync 2>&1 | grep -i "scheduler\|sync.*cycle"
 
-# Kiểm tra health status
-docker inspect --format='{{.State.Health.Status}}' jira-sync-ab
+# Kiểm tra health endpoint
+curl http://localhost:3000/health
 
-# Xem chi tiết sync config
-docker exec jira-sync-ab cat /app/config/sync-rules.json
+# Xem chi tiết config trong container
+docker exec jira-sync cat /app/config/sync-ab.json
 ```
-
-**Cách xử lý:**
-- Chờ sync interval (mặc định 5 phút)
-- Kiểm tra sync rules đã bật (`enabled: true`)
-- Kiểm tra project keys đúng trong config
 
 ---
 
@@ -835,75 +545,61 @@ docker exec jira-sync-ab cat /app/config/sync-rules.json
 ### 11.1 Các lệnh thường dùng
 
 ```bash
-# Khởi động tất cả instances
-docker-compose -f docker-compose.multi.yml up -d
+# Khởi động
+docker-compose up -d
 
 # Khởi động với rebuild
-docker-compose -f docker-compose.multi.yml up -d --build
+docker-compose up -d --build
 
-# Dừng tất cả
-docker-compose -f docker-compose.multi.yml down
+# Dừng
+docker-compose down
 
 # Xem trạng thái
-docker-compose -f docker-compose.multi.yml ps
+docker-compose ps
 
-# Xem logs tất cả
-docker-compose -f docker-compose.multi.yml logs -f
+# Xem logs
+docker logs -f jira-sync
 
-# Xem logs một instance
-docker logs -f jira-sync-ab
-
-# Restart một instance
-docker restart jira-sync-ab
-
-# Restart tất cả
-docker-compose -f docker-compose.multi.yml restart
+# Restart
+docker-compose restart
 
 # Xóa tất cả (bao gồm volumes!)
-docker-compose -f docker-compose.multi.yml down -v
+docker-compose down -v
 ```
 
 ### 11.2 Kiểm tra và debug
 
 ```bash
-# Health status của tất cả
-docker inspect --format='{{.Name}}: {{.State.Health.Status}}' \
-  $(docker-compose -f docker-compose.multi.yml ps -q)
+# Health check
+curl http://localhost:3000/health
 
 # Resource usage
 docker stats
 
 # Vào container để debug
-docker exec -it jira-sync-ab sh
+docker exec -it jira-sync sh
 
-# Kiểm tra config trong container
-docker exec jira-sync-ab cat /app/config/sync-rules.json
+# Kiểm tra config
+docker exec jira-sync cat /app/config/sync-ab.json
 ```
 
 ### 11.3 Backup và Restore
 
 ```bash
-# Backup MongoDB instance AB
-docker exec mongo-ab mongodump --db sync_ab --out /backup/
-docker cp mongo-ab:/backup/ ./backups/ab_$(date +%Y%m%d)
+# Backup
+docker exec mongo mongodump --db sync_ab --out /backup/
+docker cp mongo:/backup/sync_ab ./backups/
 
-# Restore MongoDB instance AB
-docker cp ./backups/ab_20240121/. mongo-ab:/backup/
-docker exec mongo-ab mongorestore --db sync_ab --drop /backup/
+# Restore
+docker cp ./backups/sync_ab/. mongo:/backup/
+docker exec mongo mongorestore --db sync_ab --drop /backup/sync_ab
 ```
 
 ### 11.4 Cập nhật
 
 ```bash
-# Pull code mới
 git pull
-
-# Rebuild và restart
-docker-compose -f docker-compose.multi.yml up -d --build
-
-# Hoặc chỉ pull image mới và restart
-docker pull ghcr.io/username/jira-sync:latest
-docker-compose -f docker-compose.multi.yml restart
+docker-compose up -d --build
 ```
 
 ---
@@ -911,8 +607,8 @@ docker-compose -f docker-compose.multi.yml restart
 ## Liên hệ hỗ trợ
 
 Nếu gặp vấn đề không có trong tài liệu này:
-1. Xem logs: `docker logs <container-name>`
-2. Kiểm tra health: `docker inspect --format='{{.State.Health}}' <container-name>`
+1. Xem logs: `docker logs jira-sync`
+2. Kiểm tra health: `curl http://localhost:3000/health`
 3. Tạo issue trên GitHub repository
 
 ---

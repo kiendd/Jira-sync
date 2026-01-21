@@ -25,6 +25,13 @@ export type DevProjectIssueStateDoc = {
   updated_at: Date;
 };
 
+export type JiraConfig = {
+  baseUrl: string;
+  email?: string;
+  apiToken: string;
+  authType: 'basic' | 'pat';
+};
+
 export type SyncDirection = 'user_to_dev' | 'dev_to_user' | 'both' | 'none';
 
 export type SyncRuleActions = {
@@ -56,8 +63,10 @@ export type SyncRule = {
 export type SyncFlowConfigDoc = {
   name: string;
   description?: string;
+  jira?: JiraConfig;
   userProjectKey: string;
   devProjectKey: string;
+  syncIntervalMinutes?: number;
   defaultBehavior?: {
     syncAttachments?: boolean;
     addCrossLinks?: boolean;
