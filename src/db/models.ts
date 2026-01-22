@@ -11,6 +11,9 @@ export type JiraMappingDoc = {
 export type SyncStateDoc = {
   name: string;
   last_sync: Date;
+  initial_sync_completed: boolean;
+  created_at?: Date;
+  updated_at?: Date;
 };
 
 export type UserProjectIssueStateDoc = {
@@ -67,11 +70,13 @@ export type SyncFlowConfigDoc = {
   userProjectKey: string;
   devProjectKey: string;
   syncIntervalMinutes?: number;
+  initialSyncEnabled?: boolean;
   defaultBehavior?: {
     syncAttachments?: boolean;
     addCrossLinks?: boolean;
     onlyOnStatusChange?: boolean;
     skipIntermediateStatuses?: boolean;
+    fallbackBehavior?: 'ignore' | 'default_to_closed' | 'sync_to_resolved';
   };
   rules: SyncRule[];
   created_at?: Date;
@@ -93,8 +98,9 @@ const SyncStateSchema = new Schema<SyncStateDoc>(
   {
     name: { type: String, required: true, unique: true },
     last_sync: { type: Date, required: true },
+    initial_sync_completed: { type: Boolean, default: false },
   },
-  { collection: 'sync_state' }
+  { collection: 'sync_state', timestamps: true }
 );
 
 const UserProjectIssueStateSchema = new Schema<UserProjectIssueStateDoc>(

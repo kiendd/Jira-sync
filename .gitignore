@@ -6,3 +6,7 @@ dist
 .vscode
 coverage
 *.log
+
+# Sync config files (contain sensitive credentials)
+config/sync-*.json
+!config/sync-rules.example.json

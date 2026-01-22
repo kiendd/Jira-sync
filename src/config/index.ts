@@ -3,22 +3,11 @@ import pinoImport from 'pino';
 
 dotenv.config();
 
-const requireEnv = (key: string): string => {
-  const value = process.env[key];
-  if (!value) {
-    throw new Error(`Missing required env var ${key}`);
-  }
-  return value.trim();
-};
-
-const normalizeBaseUrl = (url: string): string => url.replace(/\/+$/, '');
 const optionalEnv = (key: string): string | undefined => {
   const value = process.env[key];
   return value ? value.trim() : undefined;
 };
 
-const authTypeRaw = optionalEnv('JIRA_AUTH_TYPE')?.toLowerCase();
-const jiraAuthType = authTypeRaw === 'pat' ? 'pat' : 'basic';
 const parseBool = (value: string | undefined): boolean => {
   if (!value) return false;
   const normalized = value.trim().toLowerCase();
@@ -27,24 +16,39 @@ const parseBool = (value: string | undefined): boolean => {
 
 export const config = {
   jira: {
-    baseUrl: normalizeBaseUrl(requireEnv('JIRA_BASE_URL')),
-    email: jiraAuthType === 'basic' ? requireEnv('JIRA_EMAIL') : optionalEnv('JIRA_EMAIL') || '',
-    apiToken: requireEnv('JIRA_API_TOKEN'),
-    authType: jiraAuthType,
-    userProjectKey: requireEnv('USER_PROJECT_KEY'),
-    devProjectKey: requireEnv('DEV_PROJECT_KEY'),
+    baseUrl: optionalEnv('JIRA_BASE_URL') || '',
+    email: optionalEnv('JIRA_EMAIL') || '',
+    apiToken: optionalEnv('JIRA_API_TOKEN') || '',
+    authType: (optionalEnv('JIRA_AUTH_TYPE') as 'basic' | 'pat') || 'pat',
+    userProjectKey: optionalEnv('USER_PROJECT_KEY') || '',
+    devProjectKey: optionalEnv('DEV_PROJECT_KEY') || '',
   },
   syncIntervalMinutes: Number(process.env.SYNC_INTERVAL_MINUTES || 5),
-  databaseUrl: requireEnv('DATABASE_URL'),
-  databaseName: optionalEnv('WORKER_DATABASE_NAME') || requireEnv('DATABASE_NAME'),
+  databaseUrl: optionalEnv('DATABASE_URL') || 'mongodb://localhost:27017',
+  logLevel: optionalEnv('LOG_LEVEL') || 'info',
+  port: Number(optionalEnv('PORT') || 3000),
+  configDir: optionalEnv('CONFIG_DIR') || './config',
 };
 
 const pino = (pinoImport as any).default ?? pinoImport;
 const prettyLogs = parseBool(process.env.LOG_PRETTY) || process.env.NODE_ENV === 'development';
+const logFile = process.env.LOG_FILE;
 
-export const logger = pino({
-  level: process.env.LOG_LEVEL || 'info',
-  transport: prettyLogs ? { target: 'pino-pretty' } : undefined,
-});
+const loggerOptions: Record<string, any> = {
+  level: config.logLevel,
+};
+
+if (logFile) {
+  loggerOptions.transport = {
+    targets: [
+      { target: 'pino/file', options: { destination: 1 } },
+      { target: 'pino/file', options: { destination: logFile } },
+    ],
+  };
+} else if (prettyLogs) {
+  loggerOptions.transport = { target: 'pino-pretty' };
+}
+
+export const logger = pino(loggerOptions);
 
 export const buildIssueUrl = (issueKey: string): string => `${config.jira.baseUrl}/browse/${issueKey}`;

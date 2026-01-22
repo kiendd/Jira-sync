@@ -15,6 +15,14 @@ import { createMapping, getMappingByUserKey } from '../db/repo.js';
 import { descriptionHasIssueLinkForProject } from '../jira/description.js';
 import { SyncFlowConfigDoc, SyncRule } from '../db/models.js';
 import { findMatchingRule } from './config-loader.js';
+import { StatusChange } from './issue-state-tracker.js';
+import {
+  logIssueFetched,
+  logIssueProcessed,
+  logActionCreateIssue,
+  logActionSyncStatus,
+  logActionSkipped,
+} from './audit-logger.js';
 
 const buildAuthHeader = (): Record<string, string> => {
   if (config.jira.authType === 'pat') {
@@ -99,9 +107,24 @@ const executeRuleActions = async (
       await commentUserIssue(issue.key, comment);
     }
 
-    logger.info(
-      { userIssue: issue.key, devIssue: devIssue.key },
-      'Synced User project -> Dev project'
+    logActionCreateIssue(
+      issue.key,
+      issue.fields.summary ?? issue.key,
+      'user',
+      devIssue.key,
+      'dev',
+      'Open'
+    );
+
+    logIssueProcessed(
+      issue.key,
+      issue.fields.summary ?? issue.key,
+      'user',
+      issue.fields?.status?.name ?? 'Unknown',
+      rule.id ?? rule.sourceStatus,
+      'createIssue',
+      devIssue.key,
+      false
     );
     return;
   }
@@ -115,24 +138,59 @@ const executeRuleActions = async (
       await commentUserIssue(issue.key, comment);
     }
 
-    logger.info(
-      { userIssue: issue.key, devIssue: existingMapping.dev_issue_key },
-      'Mirrored User status -> Dev status'
+    logActionSyncStatus(
+      issue.key,
+      issue.fields?.status?.name ?? 'Unknown',
+      existingMapping.dev_issue_key,
+      targetStatus,
+      'user_to_dev'
+    );
+
+    logIssueProcessed(
+      issue.key,
+      issue.fields.summary ?? issue.key,
+      'user',
+      issue.fields?.status?.name ?? 'Unknown',
+      rule.id ?? rule.sourceStatus,
+      'syncStatus',
+      existingMapping.dev_issue_key,
+      true
     );
   }
 };
 
 export const syncUserProjectToDevProject = async (
   lastSync: Date | null,
-  syncConfig: SyncFlowConfigDoc
+  syncConfig: SyncFlowConfigDoc,
+  doFullSync: boolean = false
 ): Promise<void> => {
-  const issues = await getUpdatedUserProjectIssues(lastSync);
+  const issues = await getUpdatedUserProjectIssues(lastSync, doFullSync);
 
   for (const issue of issues) {
-    const statusName = issue.fields?.status?.name;
+    const statusName = issue.fields?.status?.name ?? 'Unknown';
+    const issueTitle = issue.fields?.summary ?? issue.key;
+
+    logIssueFetched(
+      issue.key,
+      issueTitle,
+      'user',
+      statusName,
+      issue.fields?.updated ?? null
+    );
+
     const rule = findMatchingRule(syncConfig.rules, statusName, 'user_to_dev');
 
-    if (!rule) continue;
+    if (!rule) {
+      logIssueProcessed(
+        issue.key,
+        issueTitle,
+        'user',
+        statusName,
+        'none',
+        'noRule'
+      );
+      continue;
+    }
 
     const description = issue.fields?.description;
     const hasDevLink = descriptionHasIssueLinkForProject(
@@ -144,21 +202,94 @@ export const syncUserProjectToDevProject = async (
 
     const requireMapping = rule.conditions?.requireMapping ?? true;
     if (requireMapping && !existingMapping) {
-      logger.debug(
-        { userIssue: issue.key, sourceStatus: statusName },
-        'Skipping User issue: no mapping exists and rule requires mapping'
+      logActionSkipped(
+        issue.key,
+        'requireMapping',
+        `Rule ${rule.id ?? rule.sourceStatus} requires mapping`
       );
       continue;
     }
 
     if (rule.actions?.createIssue && hasDevLink) {
-      logger.debug(
-        { userIssue: issue.key },
-        'Skipping User issue: Dev link already exists'
+      logActionSkipped(
+        issue.key,
+        'hasLink',
+        'Dev link already exists in description'
       );
       continue;
     }
 
     await executeRuleActions(issue, rule, existingMapping);
+  }
+};
+
+export const syncUserStatusChangesToDevProject = async (
+  statusChanges: StatusChange[],
+  syncConfig: SyncFlowConfigDoc
+): Promise<void> => {
+  const userChanges = statusChanges.filter((c) => c.projectType === 'user');
+
+  for (const change of userChanges) {
+    const rule = findMatchingRule(syncConfig.rules, change.toStatus, 'user_to_dev');
+
+    if (!rule) {
+      logActionSkipped(
+        change.issueKey,
+        'noRule',
+        `No rule for status "${change.toStatus}"`
+      );
+      continue;
+    }
+
+    const existingMapping = await getMappingByUserKey(change.issueKey);
+
+    const requireMapping = rule.conditions?.requireMapping ?? true;
+    if (requireMapping && !existingMapping && !rule.actions?.createIssue) {
+      logActionSkipped(
+        change.issueKey,
+        'requireMapping',
+        `Rule ${rule.id ?? rule.sourceStatus} requires mapping`
+      );
+      continue;
+    }
+
+    if (rule.actions?.createIssue && !existingMapping) {
+      const issue = { key: change.issueKey, fields: { summary: change.issueKey, description: '' } };
+      await executeRuleActions(issue, rule, null);
+      continue;
+    }
+
+    if (rule.actions?.syncStatus && existingMapping) {
+      const targetStatus = rule.actions.targetStatus || rule.sourceStatus;
+      await transitionDevIssueStatus(existingMapping.dev_issue_key, targetStatus);
+
+      if (rule.actions.addComment && rule.actions.commentTemplate) {
+        const comment = renderCommentTemplate(
+          rule.actions.commentTemplate,
+          change.issueKey,
+          existingMapping.dev_issue_key
+        );
+        await commentUserIssue(change.issueKey, comment);
+      }
+
+      logActionSyncStatus(
+        change.issueKey,
+        change.toStatus,
+        existingMapping.dev_issue_key,
+        targetStatus,
+        'user_to_dev'
+      );
+
+      logIssueProcessed(
+        change.issueKey,
+        change.issueKey,
+        'user',
+        change.toStatus,
+        rule.id ?? rule.sourceStatus,
+        'syncStatus',
+        existingMapping.dev_issue_key,
+        true
+      );
+    }
   }
 };

@@ -3,15 +3,16 @@ import { config, logger } from '../config/index.js';
 
 let isConnecting = false;
 
-export const connectDb = async (): Promise<void> => {
+export const connectDb = async (databaseName?: string): Promise<void> => {
   if (mongoose.connection.readyState === 1 || isConnecting) {
     return;
   }
   isConnecting = true;
   try {
     mongoose.set('strictQuery', true);
-    await mongoose.connect(config.databaseUrl, { dbName: config.databaseName });
-    logger.info('Connected to MongoDB');
+    const dbName = databaseName || 'jira_sync';
+    await mongoose.connect(config.databaseUrl, { dbName });
+    logger.info({ databaseName: dbName }, 'Connected to MongoDB');
   } catch (err) {
     logger.error({ err }, 'Failed to connect MongoDB');
     throw err;

@@ -9,7 +9,7 @@
     "lint": "tsc --noEmit",
     "sync:init": "node --loader ts-node/esm scripts/initial-sync.ts",
     "test:list-user-project": "node --loader ts-node/esm scripts/list-user-project-issues.ts",
-    "test:auth": "ts-node-esm scripts/test-auth.ts",
+    "test:auth": "node --loader ts-node/esm scripts/test-auth.ts",
     "test:sync-cycle": "npm run build && node scripts/test-sync-cycle-dist.js"
   },
   "ts-node": {

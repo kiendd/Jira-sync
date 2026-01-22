@@ -1,0 +1,7 @@
+id: detailed-issue-logging
+title: Enhanced Issue Audit Logging
+status: pending
+author: kien
+created: 2026-01-22
+specs:
+  - issue-audit-logging

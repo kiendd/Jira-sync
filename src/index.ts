@@ -1,4 +1,4 @@
-import { logger } from './config/index.js';
+import { logger, config } from './config/index.js';
 import { syncConfigLoader } from './sync/config-loader.js';
 import { processManager } from './sync/process-manager.js';
 import http from 'http';
@@ -12,12 +12,32 @@ const startMainProcess = async () => {
     const configs = syncConfigLoader.loadConfigs();
 
     if (configs.length === 0) {
-      logger.warn('No sync configurations found. Please add config files to the config directory.');
-      logger.info('Example: config/sync-ab.json, config/sync-cd.json');
-    } else {
-      logger.info({ count: configs.length }, 'Starting workers for sync configurations');
-      processManager.startWorkers(configs);
+      logger.error({
+        configDir: config.configDir,
+      }, `No configuration files found in ${config.configDir}/
+
+To run the service, you must create at least one JSON config file.
+
+Example config/sync-ab.json:
+{
+  "name": "sync-ab",
+  "jira": {
+    "baseUrl": "https://your-domain.atlassian.net",
+    "email": "bot@your-domain.com",
+    "apiToken": "your-api-token",
+    "authType": "pat"
+  },
+  "userProjectKey": "USER-A",
+  "devProjectKey": "DEV-A",
+  "syncIntervalMinutes": 5
+}
+
+See DEPLOY.md for detailed configuration instructions.`);
+      process.exit(1);
     }
+
+    logger.info({ count: configs.length }, 'Starting workers for sync configurations');
+    processManager.startWorkers(configs);
 
     const healthServer = http.createServer((req, res) => {
       if (req.url === '/health') {
@@ -36,9 +56,8 @@ const startMainProcess = async () => {
       }
     });
 
-    const PORT = Number(process.env.PORT || 3000);
-    healthServer.listen(PORT, '0.0.0.0', () => {
-      logger.info({ port: PORT }, 'Health check server started');
+    healthServer.listen(config.port, '0.0.0.0', () => {
+      logger.info({ port: config.port }, 'Health check server started');
     });
 
     process.on('SIGTERM', () => {

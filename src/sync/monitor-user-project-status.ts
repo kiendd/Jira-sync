@@ -8,6 +8,8 @@ import {
 } from '../db/repo.js';
 
 export const monitorUserProjectStatuses = async (): Promise<void> => {
+  logger.warn('monitorUserProjectStatuses is deprecated. Use monitorAllProjects instead.');
+
   const lastStatusSync = await getLastStatusSync();
   const issues = await getUpdatedUserProjectIssues(lastStatusSync);
 

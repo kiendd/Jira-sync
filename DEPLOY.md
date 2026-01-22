@@ -77,8 +77,8 @@ Jira Sync chạy với **1 container duy nhất** sử dụng Node.js child proc
 | Thành phần | Mô tả |
 |------------|-------|
 | `docker-compose.yml` | Docker Compose file |
-| `.env` | File biến môi trường (credentials) |
-| `config/sync-*.json` | File cấu hình sync rules cho từng worker |
+| `.env` | File biến môi trường (infrastructure, không chứa JIRA credentials) |
+| `config/sync-*.json` | File cấu hình cho từng worker (chứa JIRA credentials) |
 
 ---
 
@@ -229,16 +229,29 @@ LOG_LEVEL=info
 
 # Port cho health check server
 PORT=3000
+
+# Database URL (MongoDB instance - dùng chung cho tất cả workers)
+DATABASE_URL=mongodb://mongo:27017
+
+# Sync interval (mặc định, có thể override trong từng worker config)
+SYNC_INTERVAL_MINUTES=5
 ```
 
-> **Lưu ý:** Cấu hình Jira (baseUrl, email, apiToken) và sync interval được cấu hình **riêng cho từng worker** trong file `config/sync-*.json`. Xem [Section 6](#6-cấu-hình-sync-rules).
+> **Lưu ý về Database:**
+> - `DATABASE_URL` cấu hình MongoDB instance (global, dùng chung)
+> - `DATABASE_NAME` **KHÔNG** cấu hình trong .env - mỗi worker tự động sử dụng database riêng với tên `<worker_name>_sync`
+> - Ví dụ: worker `sync-ab` sử dụng database `sync_ab`, worker `sync-cd` sử dụng database `sync_cd`
 
-### 5.2 Cách lấy Jira API Token
+### 5.2 Cấu hình JIRA Credentials
+
+JIRA credentials được cấu hình trong file JSON. Xem [Section 6](#6-cấu-hình-sync-rules).
+
+### 5.3 Cách lấy Jira API Token
 
 1. Đăng nhập: https://id.atlassian.com/manage-profile/security/api-tokens
 2. Nhấn **Create API token**
 3. Đặt tên mô tả
-4. **Copy token ngay** và dán vào `.env`
+4. **Copy token ngay** và dán vào file JSON config (`config/sync-*.json`)
 
 ---
 
@@ -600,6 +613,59 @@ docker exec mongo mongorestore --db sync_ab --drop /backup/sync_ab
 ```bash
 git pull
 docker-compose up -d --build
+```
+
+---
+
+## 12. Migration từ cấu hình env vars cũ
+
+Nếu bạn đang sử dụng phiên bản cũ với JIRA credentials trong `.env`, hãy migrate sang cấu hình file JSON.
+
+### 12.1 Bước 1: Tạo file config từ env vars
+
+Tạo file `config/sync-default.json` với nội dung sau (lấy giá trị từ `.env` cũ):
+
+```json
+{
+  "name": "sync-default",
+  "description": "Default sync configuration migrated from env vars",
+  "jira": {
+    "baseUrl": "https://your-domain.atlassian.net",
+    "email": "bot@your-domain.com",
+    "apiToken": "your-jira-api-token",
+    "authType": "pat"
+  },
+  "userProjectKey": "YOUR-USER-PROJECT-KEY",
+  "devProjectKey": "YOUR-DEV-PROJECT-KEY",
+  "syncIntervalMinutes": 5
+}
+```
+
+### 12.2 Bước 2: Cập nhật .env
+
+Xóa các dòng JIRA credentials khỏi `.env`:
+
+```bash
+# Xóa các dòng này:
+# JIRA_AUTH_TYPE=pat
+# JIRA_BASE_URL=...
+# JIRA_EMAIL=...
+# JIRA_API_TOKEN=...
+# USER_PROJECT_KEY=...
+# DEV_PROJECT_KEY=...
+```
+
+### 12.3 Bước 3: Restart service
+
+```bash
+docker-compose down
+docker-compose up -d
+```
+
+### 12.4 Bước 4: Kiểm tra
+
+```bash
+curl http://localhost:3000/health
 ```
 
 ---

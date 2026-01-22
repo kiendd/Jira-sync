@@ -23,28 +23,36 @@ const formatJiraDate = (date: Date): string => {
   return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
 };
 
-class JiraClient {
-  private client: Version2Client;
+const getHostUrl = (baseUrl: string): string => {
+  return baseUrl;
+};
 
-  constructor() {
-    const isPat = config.jira.authType === 'pat';
-    this.client = new Version2Client({
-      host: config.jira.baseUrl,
-      authentication: isPat
-        ? { oauth2: { accessToken: config.jira.apiToken } }
-        : { basic: { email: config.jira.email, apiToken: config.jira.apiToken } },
-    });
+class JiraClient {
+  private _client: Version2Client | null = null;
+
+  private get client(): Version2Client {
+    if (!this._client) {
+      const isPat = config.jira.authType === 'pat';
+      this._client = new Version2Client({
+        host: getHostUrl(config.jira.baseUrl),
+        authentication: isPat
+          ? { oauth2: { accessToken: config.jira.apiToken } }
+          : { basic: { email: config.jira.email, apiToken: config.jira.apiToken } },
+      });
+    }
+    return this._client;
   }
 
   async searchIssues(params: {
     jql: string;
     fields?: string[];
     updatedSince?: Date | null;
+    ignoreTimeFilter?: boolean;
   }): Promise<JiraIssue[]> {
-    const { jql, fields = [], updatedSince } = params;
+    const { jql, fields = [], updatedSince, ignoreTimeFilter } = params;
 
     let composedJql = jql;
-    if (updatedSince) {
+    if (updatedSince && !ignoreTimeFilter) {
       const needle = /order by/i;
       const match = jql.match(needle);
       const updatedClause = `updated >= "${formatJiraDate(updatedSince)}"`;
@@ -88,10 +96,10 @@ class JiraClient {
 
     const filtered = updatedSince
       ? issues.filter((iss) => {
-          const updated = iss.fields?.updated;
-          const updatedAt = updated ? new Date(updated).getTime() : Number.MAX_SAFE_INTEGER;
-          return Number.isFinite(updatedAt) ? updatedAt > updatedSince.getTime() : true;
-        })
+        const updated = iss.fields?.updated;
+        const updatedAt = updated ? new Date(updated).getTime() : Number.MAX_SAFE_INTEGER;
+        return Number.isFinite(updatedAt) ? updatedAt > updatedSince.getTime() : true;
+      })
       : issues;
 
     logger.info({ jql: composedJql, count: filtered.length }, 'Fetched Jira issues');
@@ -187,6 +195,13 @@ class JiraClient {
       issueIdOrKey: params.issueKey,
       attachment: { filename: params.filename, file: fileData, mimeType: params.mimeType },
     });
+  }
+  async getProject(projectKey: string): Promise<any> {
+    return this.client.projects.getProject({ projectIdOrKey: projectKey });
+  }
+
+  async getProjectStatuses(projectKey: string): Promise<any[]> {
+    return this.client.projects.getAllStatuses({ projectIdOrKey: projectKey });
   }
 }
 

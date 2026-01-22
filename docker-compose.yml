@@ -5,10 +5,13 @@ version: "3.9"
 # File này chạy nhiều sync pairs trong 1 container sử dụng child processes.
 # Tiết kiệm tài nguyên: 1 container thay vì N containers, 1 MongoDB thay vì N MongoDB.
 #
+# Cấu hình JIRA được đọc từ file JSON trong thư mục config/
+# Mỗi worker có thể kết nối đến JIRA instance khác nhau
+#
 # Cách sử dụng:
 #   1. Tạo config files trong config/ (sync-ab.json, sync-cd.json, ...)
-#   2. Copy .env.consolidated.example thành .env và cấu hình
-#   3. Build và chạy: docker-compose -f docker-compose.consolidated.yml up -d
+#   2. Mỗi file chứa JIRA credentials cho một worker
+#   3. Build và chạy: docker-compose up -d
 #
 # Thêm sync pair mới:
 #   1. Tạo file config mới (ví dụ: config/sync-xy.json)
@@ -23,13 +26,6 @@ services:
     container_name: jira-sync-consolidated
     restart: unless-stopped
     environment:
-      # Jira authentication (dùng cho tất cả workers)
-      JIRA_AUTH_TYPE: ${JIRA_AUTH_TYPE:-pat}
-      JIRA_BASE_URL: ${JIRA_BASE_URL}
-      JIRA_EMAIL: ${JIRA_EMAIL:-}
-      JIRA_API_TOKEN: ${JIRA_API_TOKEN}
-      USER_PROJECT_KEY: ${USER_PROJECT_KEY}
-      DEV_PROJECT_KEY: ${DEV_PROJECT_KEY}
       # Database (shared MongoDB instance)
       DATABASE_URL: mongodb://mongo:27017
       # Sync settings
@@ -37,12 +33,12 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       # Health check server
       PORT: ${PORT:-3000}
-      # Config directory
+      # Config directory (mount JSON config files here)
       CONFIG_DIR: /app/config
     depends_on:
       - mongo
     volumes:
-      # Mount tất cả config files
+      # Mount tất cả config files - mỗi file = 1 worker
       - ./config:/app/config:ro
     ports:
       - "${PORT:-3000}:${PORT:-3000}"
@@ -109,16 +105,15 @@ volumes:
 #    cp config/sync-rules.example.json config/sync-cd.json
 #
 # 2. Chỉnh sửa mỗi config file:
-#    - Đặt userProjectKey và devProjectKey đúng
+#    - Đặt jira.baseUrl, jira.email, jira.apiToken
+#    - Đặt userProjectKey và devProjectKey
 #    - Đặt tên config phù hợp (name field)
 #
-# 3. Cấu hình .env:
-#    cp .env.consolidated.example .env
-#    nano .env
+# 3. Mỗi worker sẽ tự động được spawn cho mỗi file config
 #
 # 4. Build và chạy:
-#    docker-compose -f docker-compose.consolidated.yml build
-#    docker-compose -f docker-compose.consolidated.yml up -d
+#    docker-compose build
+#    docker-compose up -d
 #
 # 5. Kiểm tra health:
 #    curl http://localhost:3000/health

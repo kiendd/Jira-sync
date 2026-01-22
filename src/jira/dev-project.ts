@@ -2,11 +2,11 @@ import { jiraClient, JiraIssue } from './client.js';
 import { config, buildIssueUrl } from '../config/index.js';
 import { appendLinkToDescription } from './description.js';
 
-const projectKey = config.jira.devProjectKey;
-
 export const getUpdatedDevProjectIssues = async (
-  updatedSince: Date | null
+  updatedSince: Date | null,
+  doFullSync: boolean = false
 ): Promise<JiraIssue[]> => {
+  const projectKey = config.jira.devProjectKey;
   const fields = [
     'summary',
     'description',
@@ -18,6 +18,7 @@ export const getUpdatedDevProjectIssues = async (
     jql: `project = ${projectKey} ORDER BY updated ASC`,
     fields,
     updatedSince: updatedSince ?? undefined,
+    ignoreTimeFilter: doFullSync,
   });
 };
 
@@ -27,6 +28,7 @@ export const createDevIssue = async (params: {
   severity?: any;
   userIssueUrl: string;
 }): Promise<{ key: string; id: string; url: string }> => {
+  const projectKey = config.jira.devProjectKey;
   const description = appendLinkToDescription(
     params.description ?? '',
     params.userIssueUrl,

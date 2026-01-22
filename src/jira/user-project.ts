@@ -2,11 +2,11 @@ import { jiraClient, JiraIssue } from './client.js';
 import { config, buildIssueUrl } from '../config/index.js';
 import { appendLinkToDescription } from './description.js';
 
-const projectKey = config.jira.userProjectKey;
-
 export const getUpdatedUserProjectIssues = async (
-  updatedSince: Date | null
+  updatedSince: Date | null,
+  doFullSync: boolean = false
 ): Promise<JiraIssue[]> => {
+  const projectKey = config.jira.userProjectKey;
   const fields = [
     'summary',
     'description',
@@ -20,6 +20,7 @@ export const getUpdatedUserProjectIssues = async (
     jql: `project = ${projectKey} ORDER BY updated ASC`,
     fields,
     updatedSince: updatedSince ?? undefined,
+    ignoreTimeFilter: doFullSync,
   });
 };
 
@@ -75,3 +76,31 @@ export const getUserProjectIssue = async (
 
 export const buildUserProjectIssueUrl = (issueKey: string): string =>
   buildIssueUrl(issueKey);
+
+export const getUserProjectStatuses = async (): Promise<any[]> => {
+  return jiraClient.getProjectStatuses(config.jira.userProjectKey);
+};
+
+export const getStatusCategoryMap = async (): Promise<Map<string, string>> => {
+  try {
+    const statuses = await getUserProjectStatuses();
+    const map = new Map<string, string>();
+    statuses.forEach((issueType: any) => {
+      issueType.statuses.forEach((s: any) => {
+        if (s.name && s.statusCategory?.key) {
+          map.set(s.name.toLowerCase(), s.statusCategory.key);
+        }
+      });
+    });
+    return map;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('Failed to fetch user project statuses for category check', err);
+    return new Map();
+  }
+};
+
+export const isResolutionStatus = (status: string, categoryMap: Map<string, string>): boolean => {
+  const category = categoryMap.get(status.toLowerCase());
+  return category === 'done';
+};

@@ -40,12 +40,23 @@ export const getLastSync = async (): Promise<Date | null> => {
   return state?.last_sync ?? null;
 };
 
-export const updateLastSync = async (lastSync: Date) =>
+export const getSyncState = async (name: string): Promise<SyncStateDoc | null> =>
+  SyncStateModel.findOne({ name }).lean<SyncStateDoc | null>();
+
+export const updateLastSync = async (lastSync: Date, name: string = SYNC_STATE_NAME) =>
   SyncStateModel.findOneAndUpdate(
-    { name: SYNC_STATE_NAME },
+    { name },
     { $set: { last_sync: lastSync } },
     { upsert: true, new: true }
   );
+
+export const markInitialSyncCompleted = async (name: string): Promise<void> => {
+  SyncStateModel.findOneAndUpdate(
+    { name },
+    { $set: { initial_sync_completed: true } },
+    { upsert: true }
+  );
+};
 
 export const getLastStatusSync = async (): Promise<Date | null> => {
   const state = await SyncStateModel.findOne({ name: STATUS_SYNC_STATE_NAME }).lean<SyncStateDoc | null>();
