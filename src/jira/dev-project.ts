@@ -13,6 +13,7 @@ export const getUpdatedDevProjectIssues = async (
     'status',
     'severity',
     'updated',
+    'attachment',
   ];
   return jiraClient.searchIssues({
     jql: `project = ${projectKey} ORDER BY updated ASC`,
@@ -21,6 +22,16 @@ export const getUpdatedDevProjectIssues = async (
     ignoreTimeFilter: doFullSync,
   });
 };
+
+export const getDevProjectIssue = async (
+  issueKey: string
+): Promise<JiraIssue> =>
+  jiraClient.getIssue(issueKey, [
+    'status',
+    'description',
+    'attachment',
+    'summary',
+  ]);
 
 export const createDevIssue = async (params: {
   summary: string;

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "npm run build && node dist/index.js",
+    "dev": "node --loader ts-node/esm src/index.ts",
     "build": "tsc -p tsconfig.json",
     "lint": "tsc --noEmit",
     "sync:init": "node --loader ts-node/esm scripts/initial-sync.ts",

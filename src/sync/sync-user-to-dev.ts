@@ -10,6 +10,7 @@ import {
   buildDevProjectIssueUrl,
   transitionDevIssueStatus,
   addAttachmentToDevIssue,
+  getDevProjectIssue,
 } from '../jira/dev-project.js';
 import { createMapping, getMappingByUserKey } from '../db/repo.js';
 import { descriptionHasIssueLinkForProject } from '../jira/description.js';
@@ -32,6 +33,29 @@ const buildAuthHeader = (): Record<string, string> => {
   return { Authorization: `Basic ${token}` };
 };
 
+const downloadAttachment = async (url: string, headers: Record<string, string>): Promise<{ data: Buffer, mimeType?: string } | null> => {
+  try {
+    // Attempt download. If generic fetch fails, try manual redirect handling for cases where
+    // simple 'follow' might not work as expected with Auth headers across origins (though fetch should handle it).
+    // For now, we rely on standard fetch but log strictly.
+    const res = await fetch(url, { headers });
+
+    if (!res.ok) {
+      // Fallback: try manual redirect if status is 3xx (fetch might not return 3xx with redirect:follow unless manual)
+      // actually default is follow. If it failed with 404/403, maybe auth issue.
+      logger.warn({ url, status: res.status }, 'Download failed, trying manual redirect check ignored for now');
+      return null;
+    }
+
+    const arrayBuf = await res.arrayBuffer();
+    const mimeType = res.headers.get('content-type')?.split(';')[0] || undefined;
+    return { data: Buffer.from(arrayBuf), mimeType };
+  } catch (err) {
+    logger.warn({ err, url }, 'Error downloading attachment');
+    return null;
+  }
+};
+
 const copyAttachmentsToDev = async (userIssue: any, devIssueKey: string): Promise<void> => {
   const attachments: any[] = Array.isArray(userIssue.fields?.attachment) ? userIssue.fields.attachment : [];
   if (!attachments.length) return;
@@ -42,23 +66,55 @@ const copyAttachmentsToDev = async (userIssue: any, devIssueKey: string): Promis
     const filename = att?.filename || att?.id || 'attachment';
     if (!url) continue;
 
-    try {
-      const resp = await fetch(url, { headers });
-      if (!resp.ok) {
-        logger.warn({ url, status: resp.status }, 'Failed to download attachment');
-        continue;
+    const result = await downloadAttachment(url, headers);
+    if (result) {
+      try {
+        await addAttachmentToDevIssue({
+          issueKey: devIssueKey,
+          filename,
+          data: result.data,
+          mimeType: result.mimeType,
+        });
+        logger.info({ userIssue: userIssue.key, devIssue: devIssueKey, filename }, 'Synced attachment');
+      } catch (err) {
+        logger.error({ err, filename }, 'Failed to upload attachment to Dev issue');
       }
-      const arrayBuf = await resp.arrayBuffer();
-      const mimeType = resp.headers.get('content-type')?.split(';')[0] || undefined;
-      await addAttachmentToDevIssue({
-        issueKey: devIssueKey,
-        filename,
-        data: Buffer.from(arrayBuf),
-        mimeType,
-      });
-    } catch (err) {
-      logger.warn({ err, url }, 'Error copying attachment to Dev issue');
     }
+  }
+};
+
+const syncAttachmentsOnUpdate = async (userIssue: any, devIssueKey: string): Promise<void> => {
+  try {
+    const userAttachments: any[] = Array.isArray(userIssue.fields?.attachment) ? userIssue.fields.attachment : [];
+    if (!userAttachments.length) return;
+
+    const devIssue = await getDevProjectIssue(devIssueKey);
+    const devAttachments: any[] = Array.isArray(devIssue.fields?.attachment) ? devIssue.fields.attachment : [];
+
+    const headers = buildAuthHeader();
+
+    for (const uAtt of userAttachments) {
+      // Check if exists in dev (by filename and size)
+      const exists = devAttachments.some(dAtt => dAtt.filename === uAtt.filename && dAtt.size === uAtt.size);
+      if (exists) continue;
+
+      logger.info({ issue: userIssue.key, filename: uAtt.filename }, 'Found new attachment to sync');
+      const url = uAtt.content;
+      if (!url) continue;
+
+      const result = await downloadAttachment(url, headers);
+      if (result) {
+        await addAttachmentToDevIssue({
+          issueKey: devIssueKey,
+          filename: uAtt.filename,
+          data: result.data,
+          mimeType: result.mimeType,
+        });
+        logger.info({ userIssue: userIssue.key, devIssue: devIssueKey, filename: uAtt.filename }, 'Synced new attachment on update');
+      }
+    }
+  } catch (err) {
+    logger.error({ err, userIssue: userIssue.key, devIssue: devIssueKey }, 'Failed to sync attachments on update');
   }
 };
 
@@ -220,6 +276,11 @@ export const syncUserProjectToDevProject = async (
     }
 
     await executeRuleActions(issue, rule, existingMapping);
+
+    // Always check for attachment updates if mapped and enabled
+    if (existingMapping && syncConfig.defaultBehavior?.syncAttachments) {
+      await syncAttachmentsOnUpdate(issue, existingMapping.dev_issue_key);
+    }
   }
 };
 
