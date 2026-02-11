@@ -35,6 +35,7 @@ const buildAuthHeader = (): Record<string, string> => {
 
 const downloadAttachment = async (url: string, headers: Record<string, string>): Promise<{ data: Buffer, mimeType?: string } | null> => {
   try {
+    logger.info({ url }, 'Starting attachment download');
     // Attempt download. If generic fetch fails, try manual redirect handling for cases where
     // simple 'follow' might not work as expected with Auth headers across origins (though fetch should handle it).
     // For now, we rely on standard fetch but log strictly.
@@ -43,15 +44,18 @@ const downloadAttachment = async (url: string, headers: Record<string, string>):
     if (!res.ok) {
       // Fallback: try manual redirect if status is 3xx (fetch might not return 3xx with redirect:follow unless manual)
       // actually default is follow. If it failed with 404/403, maybe auth issue.
-      logger.warn({ url, status: res.status }, 'Download failed, trying manual redirect check ignored for now');
+      logger.warn({ url, status: res.status, statusText: res.statusText }, 'Download failed');
       return null;
     }
 
     const arrayBuf = await res.arrayBuffer();
+    const buffer = Buffer.from(arrayBuf);
     const mimeType = res.headers.get('content-type')?.split(';')[0] || undefined;
-    return { data: Buffer.from(arrayBuf), mimeType };
+
+    logger.info({ url, size: buffer.length, mimeType }, 'Attachment downloaded successfully');
+    return { data: buffer, mimeType };
   } catch (err) {
-    logger.warn({ err, url }, 'Error downloading attachment');
+    logger.error({ err, url }, 'Error downloading attachment exception');
     return null;
   }
 };
@@ -60,11 +64,15 @@ const copyAttachmentsToDev = async (userIssue: any, devIssueKey: string): Promis
   const attachments: any[] = Array.isArray(userIssue.fields?.attachment) ? userIssue.fields.attachment : [];
   if (!attachments.length) return;
 
+  logger.info({ userIssue: userIssue.key, devIssue: devIssueKey, count: attachments.length }, 'Processing attachments for new issue');
   const headers = buildAuthHeader();
   for (const att of attachments) {
     const url = att?.content;
     const filename = att?.filename || att?.id || 'attachment';
-    if (!url) continue;
+    if (!url) {
+      logger.warn({ userIssue: userIssue.key, filename }, 'Attachment has no content URL, skipping');
+      continue;
+    }
 
     const result = await downloadAttachment(url, headers);
     if (result) {
@@ -79,6 +87,8 @@ const copyAttachmentsToDev = async (userIssue: any, devIssueKey: string): Promis
       } catch (err) {
         logger.error({ err, filename }, 'Failed to upload attachment to Dev issue');
       }
+    } else {
+      logger.error({ userIssue: userIssue.key, filename, url }, 'Failed to download attachment, cannot sync');
     }
   }
 };
@@ -91,12 +101,22 @@ const syncAttachmentsOnUpdate = async (userIssue: any, devIssueKey: string): Pro
     const devIssue = await getDevProjectIssue(devIssueKey);
     const devAttachments: any[] = Array.isArray(devIssue.fields?.attachment) ? devIssue.fields.attachment : [];
 
+    logger.info({
+      userIssue: userIssue.key,
+      devIssue: devIssueKey,
+      userCount: userAttachments.length,
+      devCount: devAttachments.length
+    }, 'Checking for attachment updates');
+
     const headers = buildAuthHeader();
 
     for (const uAtt of userAttachments) {
       // Check if exists in dev (by filename and size)
       const exists = devAttachments.some(dAtt => dAtt.filename === uAtt.filename && dAtt.size === uAtt.size);
-      if (exists) continue;
+      if (exists) {
+        logger.debug({ filename: uAtt.filename }, 'Attachment already exists in Dev, skipping');
+        continue;
+      }
 
       logger.info({ issue: userIssue.key, filename: uAtt.filename }, 'Found new attachment to sync');
       const url = uAtt.content;
@@ -111,6 +131,8 @@ const syncAttachmentsOnUpdate = async (userIssue: any, devIssueKey: string): Pro
           mimeType: result.mimeType,
         });
         logger.info({ userIssue: userIssue.key, devIssue: devIssueKey, filename: uAtt.filename }, 'Synced new attachment on update');
+      } else {
+        logger.error({ userIssue: userIssue.key, filename: uAtt.filename }, 'Failed to download new attachment on update');
       }
     }
   } catch (err) {
