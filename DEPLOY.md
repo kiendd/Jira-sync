@@ -551,6 +551,22 @@ curl http://localhost:3000/health
 docker exec jira-sync cat /app/config/sync-ab.json
 ```
 
+### 10.5 Attachment Sync không hoạt động
+
+1. **Nguyên nhân 1: Chưa rebuild image**
+   Code xử lý attachment mới được cập nhật. Nếu bạn chỉ chạy `docker-compose up -d`, Docker có thể dùng image cũ.
+   -> Cách fix: Chạy `docker-compose up -d --build`.
+
+2. **Nguyên nhân 2: Lỗi DNS/Network**
+   Container không thể truy cập URL của attachment (ví dụ: URL nội bộ).
+   -> Cách fix: Kiểm tra bằng `docker exec -it jira-sync curl -I <attachment_url>`.
+   
+   Nếu Jira chạy trên host máy chủ (localhost), hãy dùng `host.docker.internal` thay vì `localhost` trong config, hoặc dùng IP LAN.
+
+3. **Nguyên nhân 3: SSL/Certificate**
+   Nếu Jira dùng self-signed certificate, Node.js sẽ từ chối kết nối.
+   -> Cách fix: Thêm biến môi trường `NODE_TLS_REJECT_UNAUTHORIZED=0` vào `docker-compose.yml` (chỉ dùng cho debug/internal).
+
 ---
 
 ## 11. Quick Reference
