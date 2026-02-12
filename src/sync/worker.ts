@@ -4,6 +4,21 @@ import { startScheduler } from '../scheduler.js';
 import fs from 'fs';
 import { SyncFlowConfigDoc } from '../db/models.js';
 
+// Polyfill for File class if it doesn't exist (Node < 20)
+if (typeof (global as any).File === 'undefined') {
+  class File extends Blob {
+    name: string;
+    lastModified: number;
+
+    constructor(sources: Array<any>, name: string, options?: any) {
+      super(sources, options);
+      this.name = name;
+      this.lastModified = options?.lastModified || Date.now();
+    }
+  }
+  (global as any).File = File;
+}
+
 const sendHeartbeat = (): void => {
   process.send?.({ type: 'heartbeat' });
 };
